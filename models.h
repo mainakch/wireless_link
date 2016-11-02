@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 
 #define C 299792458 // speed of light in SI units
@@ -84,7 +85,7 @@ typedef struct
   Receiver receivers_array[MAX_RECEIVERS];
   Transmitter transmitters_array[MAX_TRANSMITTERS];
   int time;
-  GeneralNode *node_array[MAX_RECEIVERS+MAX_TRANSMITTERS];
+  GeneralNode * node_array[MAX_RECEIVERS+MAX_TRANSMITTERS];
   int total_times[MAX_RECEIVERS+MAX_TRANSMITTERS];
   int total_gaussian_samples;
   double gaussiansamples[10*MAX_TIME];
@@ -114,3 +115,7 @@ void compute_shift(PropagationModel * pm, double * power_attn, double * phase_sh
 void populate_from_file(Environment * env, const char * filename);
 void handle_request(Environment * env, FILE * fp, const char * req_type);
 void print_to_file(Environment * env, const char * filename, bool print_state);
+void add_node_to_environment_array(Environment * env, GeneralNode * gn);
+void print_node_path(Environment * env);
+void print_current_locations(Environment * env);
+double gaussenv(Environment * env);

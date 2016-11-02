@@ -9,14 +9,14 @@ int id()
 void init_simulation(Simulation * sim_not_null)
 {
   sim_not_null->generate_path = true;
-  sim_not_null->print_measurements = false;
+  sim_not_null->print_measurements = true;
   sim_not_null->frequency = 60e9; // 60 Ghz 
   sim_not_null->wavelength = C/sim_not_null->frequency;
   sim_not_null->delta_time = 0.1;
   sim_not_null->max_limit = 1000;
   sim_not_null->min_limit = 0;
   sim_not_null->boundary_tolerance = 1;
-  sim_not_null->total_time = 2;
+  sim_not_null->total_time = 200;
 }
 
 void init_spatial_motion_model(SpatialMotionModel * smm, Simulation * sim_not_null)
@@ -82,6 +82,10 @@ void init_environment(Environment * env, Simulation * sim_not_null)
   {
     env->total_times[ctr] = 0;
   }
+  if (!sim_not_null->generate_path)
+  {
+    populate_from_file(env, "/tmp/input.txt");
+  }
 }
 
 void destroy_environment(Environment * env)
@@ -120,12 +124,13 @@ void add_transmitter_with_position(Environment * env, double * pos)
   int ctr;
   for (ctr=0; ctr<3; ctr++)
   {
-    tn.gn.smm.position[ctr] = pos[ctr];
+    tn.gn.smm.position[ctr] = *(pos+ctr);
   }
   tn.gn.tm.power_in_dBm = 0; // set power to 0 dBm instead of -200
   tn.is_real_transmitter = true;
   env->transmitters_array[env->num_transmitters] = tn;
-  env->node_array[tn.gn.id] = &(tn.gn);
+  GeneralNode * gnp =   &(env->transmitters_array[env->num_transmitters].gn);
+  add_node_to_environment_array(env, gnp);
   (env->num_transmitters)++;
 }
 
@@ -136,7 +141,8 @@ void add_static_scatterer_with_position(Environment * env, double * pos)
   tn->is_real_transmitter = false;
   tn->gn.smm.acceleration_factor = 0;
   tn->gn.smm.is_static = true;
-  env->node_array[tn->gn.id] = &(tn->gn);
+  GeneralNode * gnp = &tn->gn;
+  add_node_to_environment_array(env, gnp);
   (env->num_transmitters)++;  
 }
 
@@ -150,9 +156,10 @@ void add_static_receiver(Environment * env, double * pos)
   int ctr;
   for (ctr=0; ctr<3; ctr++)
   {
-    rx.gn.smm.position[ctr] = pos[ctr];
+    env->receivers_array[env->num_receivers].gn.smm.position[ctr] = *(pos+ctr);
   }
-  env->node_array[rx.gn.id] = &(rx.gn);
+  GeneralNode * gnp = &(env->receivers_array[env->num_receivers].gn);
+  add_node_to_environment_array(env, gnp);
   (env->num_receivers)++;
 }
 
@@ -161,29 +168,29 @@ void _update_spatial_parameters(SpatialMotionModel * smm, GeneralNode * gn)
   int ctr;
 
   for (ctr=0; ctr<2; ctr++) // no updates for the third dimension
+  {
+    if (smm->position[ctr]> smm->sim->max_limit - smm->sim->boundary_tolerance)
     {
-	if (smm->position[ctr]> smm->sim->max_limit - smm->sim->boundary_tolerance)
-	  {
-	    smm->position[ctr] = smm->sim->max_limit - 2*smm->sim->boundary_tolerance;
-	    smm->velocity[ctr] *= -1;
-	  }
-	
-	if (smm->position[ctr]< smm->sim->min_limit + smm->sim->boundary_tolerance)
-	  {
-	    smm->position[ctr] = smm->sim->min_limit + 2*smm->sim->boundary_tolerance;
-	    smm->velocity[ctr] *= -1;
-	  }    
-	
-	smm->position[ctr] = smm->velocity[ctr]*smm->sim->delta_time;
-	smm->velocity[ctr] = smm->velocity[ctr] + smm->acceleration_factor*_gaussrand()*smm->sim->delta_time;
+      smm->position[ctr] = smm->sim->max_limit - 2*smm->sim->boundary_tolerance;
+      smm->velocity[ctr] *= -1;
     }
+	
+    if (smm->position[ctr]< smm->sim->min_limit + smm->sim->boundary_tolerance)
+    {
+      smm->position[ctr] = smm->sim->min_limit + 2*smm->sim->boundary_tolerance;
+      smm->velocity[ctr] *= -1;
+    }    
+    
+    smm->position[ctr] += smm->velocity[ctr]*smm->sim->delta_time;
+    smm->velocity[ctr] += smm->acceleration_factor*_gaussrand()*smm->sim->delta_time;
 
-  printf("Nodepath 1 %d ", gn->id);
-  for (ctr=0; ctr<3; ctr++)
-    {
-  	printf("%f %f ", smm->position[ctr], smm->velocity[ctr]);
-    }
-  printf("\n");
+  }
+  /* printf("Nodepath %d 1 ", gn->id); */
+  /* for (ctr=0; ctr<3; ctr++) */
+  /* { */
+  /*   printf("%f %f ", smm->position[ctr], smm->velocity[ctr]); */
+  /* } */
+  /* printf("\n"); */
 }
 
 void update_all_locations(Environment * env)
@@ -209,16 +216,19 @@ void update_all_locations(Environment * env)
     while(env->_nodepath[ctr] != NULL && env->time<env->sim->total_time)
     {
       GeneralNode * gn = env->node_array[ctr];
-      double * db = env->_nodepath[ctr]+6*env->time;
+      double * db = env->_nodepath[ctr];
+      db += 6*env->time;
       if (!gn->smm.is_static)
       {
 	for(ctr1=0; ctr1<3; ctr1++)
 	{
-	  gn->smm.position[ctr] = *db;
-	  gn->smm.velocity[ctr] = *(db+1);
-	  *db += 2;
+	  // printf("%lf %lf\n", *db, *(db+1));
+	  gn->smm.position[ctr1] = *db;
+	  gn->smm.velocity[ctr1] = *(db+1);
+	  db += 2;
 	}
       }
+      ctr++;
     }
   }
   env->time++;
@@ -238,7 +248,7 @@ void update_virtual_transmitters(Environment * env, int use_only_real)
 	Transmitter * tx1 = env->transmitters_array + ctr1;
 	Transmitter * tx2 = env->transmitters_array + ctr2;
 	if((tx1->is_real_transmitter) &&
-	   (!tx2->gn.tm.power_in_dBm<-199))
+	   (!(tx2->gn.tm.power_in_dBm<-199)))
 	{
 	  // ctr1 points at a transmitter
 	  // ctr2 points at a scatterer
@@ -297,7 +307,7 @@ void readout_receiver_array(Environment * env)
       double recv_power_dBm = tx->gn.tm.power_in_dBm - pow_attn;
       rx_output[ctr] += pow(10, 0.5*recv_power_dBm/10)*cexp(I*phase_shift);
     }
-    rx_output[ctr] += pow(rx->recv_noise_power/2, 0.5)*(_gaussrand() + I*_gaussrand());
+    rx_output[ctr] += pow(rx->recv_noise_power/2, 0.5)*(gaussenv(env) + I*gaussenv(env));
     if (env->sim->print_measurements)
     {
       printf("Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_output[ctr]), cimag(rx_output[ctr]));
@@ -349,6 +359,7 @@ void handle_request(Environment * env, FILE * fp, const char * req_type)
     fscanf(fp, "%lf", &tx->gn.tm.power_in_dBm);
     fscanf(fp, "%lf", &tx->gn.tm.start_time);
     fscanf(fp, "%lf", &tx->gn.tm.end_time);
+    add_node_to_environment_array(env, &tx->gn);
     env->num_transmitters++;
   }
   else if (!strcmp(req_type, "Receiver"))
@@ -356,20 +367,27 @@ void handle_request(Environment * env, FILE * fp, const char * req_type)
     Receiver * rx = &env->receivers_array[env->num_receivers];
     init_receiver(rx, env->sim);
     fscanf(fp, "%d", &rx->gn.id);
-    fscanf(fp, "%lf", &rx->recv_noise_power);
+    double np;
+    fscanf(fp, "%lf", &np);
+    rx->recv_noise_power = pow(10, np/10);
+    add_node_to_environment_array(env, &rx->gn);
+    env->num_receivers++;
   }
   else if (!strcmp(req_type, "Scatterer"))
   {
     Transmitter * sc = &env->transmitters_array[env->num_transmitters];
     init_transmitter(sc, env->sim);
-    fscanf(fp, "%d", &sc->gn.id);      
+    fscanf(fp, "%d", &sc->gn.id);
+    add_node_to_environment_array(env, &sc->gn);
+    env->num_transmitters++;
   }
   else if (!strcmp(req_type, "Nodepath"))
   {
     int id, ctr;
     char ch;
     fscanf(fp, "%d", &id);
-    fscanf(fp, "%c", &ch);
+    fscanf(fp, " %c", &ch);
+    // printf("ID and CH %d, %c\n", id, ch);
     if (ch=='s')
     {
       // node is static
@@ -383,16 +401,18 @@ void handle_request(Environment * env, FILE * fp, const char * req_type)
     {
       int num_inst;
       fscanf(fp, "%d", &num_inst);
+      //printf("Number of numbers %d \n", num_inst);
       // node is dynamic
-      env->node_array[id]->smm.is_static = false;
       if (env->_nodepath[id] == NULL)
       {
 	env->_nodepath[id] = malloc(6*MAX_TIME*sizeof(double));
       }
+      env->node_array[id]->smm.is_static = false;
 
       for (ctr=6*env->total_times[id]; ctr<6*(env->total_times[id]+num_inst); ctr++)
       {
-	fscanf(fp, "%lf", &env->_nodepath[id][ctr]);
+	fscanf(fp, "%lf", &env->_nodepath[id][ctr]);	
+	//printf("Read in %lf into %d, %d\n", env->_nodepath[id][ctr], id, ctr);
       }
       env->total_times[id] += num_inst;
     }
@@ -443,7 +463,7 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
   	   + env->num_receivers; rx++)
       {
         fprintf(fp, "Receiver %d %lf\n",
-  	      rx->gn.id, rx->recv_noise_power);
+		rx->gn.id, 10*log10(rx->recv_noise_power));
       }
 
       //print static node positions
@@ -453,12 +473,13 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
       {
         if (gn->smm.is_static)
         {
-  	fprintf(fp, "Nodepath %d s ", gn->id);
-  	int ctr;
-  	for (ctr=0; ctr<3; ctr++)
-  	{
-  	  fprintf(fp, "%lf ", gn->smm.position[ctr]);
-  	}	
+	  fprintf(fp, "Nodepath %d s ", gn->id);
+	  int ctr1;
+	  for (ctr1=0; ctr1<3; ctr1++)
+	  {
+	    fprintf(fp, "%lf ", gn->smm.position[ctr1]);
+	  }
+	  fprintf(fp, "\n");
         }
 	gn = env->node_array[++ctr];
       }
@@ -480,18 +501,62 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
       {
         if (!gn->smm.is_static)
         {
-  	fprintf(fp, "Nodepath %d d 1", gn->id);
-  	int ctr1;
-  	for (ctr1=0; ctr1<3; ctr1++)
-  	{
-  	  fprintf(fp, "%lf ", gn->smm.position[ctr1]);
-  	  fprintf(fp, "%lf ", gn->smm.velocity[ctr1]);	  	  
-  	}
-  	fprintf(fp, "\n");
+	  fprintf(fp, "Nodepath %d d 1 ", gn->id);
+	  int ctr1;
+	  for (ctr1=0; ctr1<3; ctr1++)
+	  {
+	    fprintf(fp, "%lf ", gn->smm.position[ctr1]);
+	    fprintf(fp, "%lf ", gn->smm.velocity[ctr1]);	  	  
+	  }
+	  fprintf(fp, "\n");
         }
 	gn = env->node_array[++ctr];
       }
     }
     fclose(fp);
   }
+}
+
+void add_node_to_environment_array(Environment * env, GeneralNode * gn)
+{
+  env->node_array[gn->id] = gn;
+}
+
+void print_node_path(Environment * env)
+{
+  int ctr, ctr1;
+  ctr1=0;
+  double * db = env->_nodepath[ctr1];
+  while (db != NULL)
+  {
+    for (ctr=0; ctr<60; ctr++)
+    {
+      printf("%lf ", *(db+ctr));
+    }
+    printf("\n");
+    db = env->_nodepath[++ctr1];
+  }
+  printf("Total number of nodes is %d \n", ctr1);
+}
+
+void print_current_locations(Environment * env)
+{
+  int ctr=0, ctr1;
+  GeneralNode * gn = env->node_array[ctr];
+  while(gn != NULL)
+  {
+    printf("Node %d \n", ctr);
+    for(ctr1=0; ctr1<3; ctr1++)
+    {
+      printf("%lf ", gn->smm.position[ctr1]);
+    }
+    printf("\n");
+    gn = env->node_array[++ctr];
+  }
+}
+
+double gaussenv(Environment * env)
+{
+  static int numcalls=0;
+  return env->gaussiansamples[numcalls++];
 }
