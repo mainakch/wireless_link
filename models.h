@@ -1,3 +1,4 @@
+#include <cblas.h>
 #include <complex.h>
 #include <fftw3.h>
 #include <math.h>
@@ -11,7 +12,7 @@
 #define C 299792458 // speed of light in SI units
 #define PI 3.141592654
 #define MAX_TRANSMITTERS 200 // maximum number of transmitters, real or virtual
-#define MAX_RECEIVERS 2000 // maximum number of receivers
+#define MAX_RECEIVERS 6400 // maximum number of receivers
 #define MAX_TIME 2000 // maximum number of receivers
 #define LINE_LENGTH 256
 
@@ -78,17 +79,20 @@ typedef struct
 
 typedef struct
 {
+  int _num_total_receivers;
+  int _num_total_transmitters;
+
   Simulation * sim;
   int num_receivers;
   int num_transmitters;
   int num_virtual_transmitters;
-  Receiver receivers_array[MAX_RECEIVERS];
-  Transmitter transmitters_array[MAX_TRANSMITTERS];
+  Receiver * receivers_array;
+  Transmitter * transmitters_array;
   int time;
-  GeneralNode * node_array[MAX_RECEIVERS+MAX_TRANSMITTERS];
-  int total_times[MAX_RECEIVERS+MAX_TRANSMITTERS];
+  GeneralNode ** node_array;
+  int * total_times;
   int total_gaussian_samples;
-  double gaussiansamples[10*MAX_TIME];
+  double gaussiansamples[2];
   double **_nodepath;
 } Environment;
 
@@ -101,6 +105,7 @@ void init_general_node(GeneralNode * gn, Simulation * sim_not_null);
 void init_transmitter(Transmitter * tn, Simulation * sim_not_null);
 void init_receiver(Receiver * rc, Simulation * sim_not_null);
 void init_environment(Environment * env, Simulation * sim_not_null);
+void init_environment_malloc(Environment * env);
 void destroy_environment(Environment * env);
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 void add_transmitter_with_position(Environment * env, double * pos);
@@ -110,8 +115,9 @@ void _update_spatial_parameters(SpatialMotionModel * smm, GeneralNode * gn);
 void update_all_locations(Environment * env);
 void update_virtual_transmitters(Environment * env, int use_only_real);
 double distance(GeneralNode * gn1, GeneralNode * gn2);
-void readout_receiver_array(Environment * env);
-void compute_shift(PropagationModel * pm, double * power_attn, double * phase_shift, Environment * env);
+// void readout_receiver_array(Environment * env);
+void readout_receiver_array_prealloc(Environment * env);
+void compute_shift(PropagationModel * pm, double * power_attn, double * phase_shift);
 void populate_from_file(Environment * env, const char * filename);
 void handle_request(Environment * env, FILE * fp, const char * req_type);
 void print_to_file(Environment * env, const char * filename, bool print_state);
@@ -119,3 +125,4 @@ void add_node_to_environment_array(Environment * env, GeneralNode * gn);
 void print_node_path(Environment * env);
 void print_current_locations(Environment * env);
 double gaussenv(Environment * env);
+

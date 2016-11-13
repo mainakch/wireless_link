@@ -72,31 +72,49 @@ void init_environment(Environment * env, Simulation * sim_not_null)
   env->num_receivers = 0;
   env->num_transmitters = 0;
   env->num_virtual_transmitters = 0;
+  env->_num_total_transmitters = MAX_TRANSMITTERS;
+  env->_num_total_receivers = MAX_RECEIVERS;
   env->sim = sim_not_null;
   env->time = 0;
-  env->_nodepath = malloc((MAX_TRANSMITTERS+MAX_RECEIVERS)*sizeof(double *));
   env->total_gaussian_samples = 0;
-
-  int ctr;
-  for (ctr=0; ctr<MAX_TRANSMITTERS+MAX_RECEIVERS; ctr++)
+  if (sim_not_null->generate_path) 
   {
-    env->total_times[ctr] = 0;
+    init_environment_malloc(env);
   }
-  if (!sim_not_null->generate_path)
+  else
   {
     populate_from_file(env, "/tmp/input.txt");
+  }
+}
+
+void init_environment_malloc(Environment * env)
+{
+  env->receivers_array = malloc(env->_num_total_receivers*sizeof(Receiver));
+  env->transmitters_array = malloc(env->_num_total_transmitters*sizeof(Transmitter));
+  env->total_times = malloc((env->_num_total_receivers + env->_num_total_transmitters)*sizeof(int));
+  env->node_array = malloc((env->_num_total_receivers + env->_num_total_transmitters)*sizeof(GeneralNode *));
+  env->_nodepath = malloc((env->_num_total_receivers + env->_num_total_transmitters)*sizeof(double *));
+  
+  int ctr;
+  for (ctr=0; ctr<env->_num_total_transmitters+env->_num_total_receivers; ctr++)
+  {
+    env->total_times[ctr] = 0;
   }
 }
 
 void destroy_environment(Environment * env)
 {
   int ctr=0;
-  while(env->_nodepath[ctr] != NULL)
+  while (env->_nodepath[ctr] != NULL)
   {
     free(env->_nodepath[ctr]);
     ctr++;
   }
   free(env->_nodepath);
+  free(env->receivers_array);
+  free(env->transmitters_array);
+  free(env->total_times);
+  free(env->node_array);
 }
 
 double _gaussrand() // http://c-faq.com/lib/gaussian.html
@@ -275,54 +293,93 @@ double distance(GeneralNode * gn1, GeneralNode *gn2)
 {
   double * pos1 = gn1->smm.position;
   double * pos2 = gn2->smm.position;
-  double res = 0;
-  int ctr;
-  for(ctr=0; ctr<3; ctr++)
-  {
-    res += pow(*(pos1+ctr) - *(pos2+ctr), 2);
-  }
 
-  return pow(res, 0.5);
+  double diff[3];
+
+  cblas_dcopy(3, pos1, 1, diff, 1);
+  cblas_daxpy(3, -1, pos2, 1, diff, 1);
+
+  return cblas_dnrm2(3, diff, 1);
+  
+  /* double res = 0; */
+  /* int ctr; */
+  /* for(ctr=0; ctr<3; ctr++) */
+  /* { */
+  /*   res += pow(*(pos1+ctr) - *(pos2+ctr), 2); */
+  /* } */
+
+  /* return pow(res, 0.5); */
 }
 
-void readout_receiver_array(Environment * env)
+/* void readout_receiver_array(Environment * env) */
+/* { */
+/*   double complex *rx_output; */
+/*   rx_output = malloc(env->num_receivers*sizeof(double complex)); */
+/*   Receiver * rx; */
+/*   Transmitter * tx; */
+/*   int tot_tx = env->num_transmitters + env->num_virtual_transmitters; */
+/*   int ctr=0; */
+/*   for (rx=env->receivers_array; rx<env->receivers_array + env->num_receivers; rx++) */
+/*   { */
+/*     rx_output[ctr] = 0; */
+/*     for (tx=env->transmitters_array; tx<env->transmitters_array + tot_tx; tx++) */
+/*     { */
+/*       double dist = distance(&(tx->gn), &(rx->gn)); */
+/*       printf("Tx id %d Rx id %d distance %lf time %d\n", tx->gn.id, rx->gn.id, dist, env->time); */
+/*       PropagationModel pm; */
+/*       init_propagation_model(&pm, env->sim); */
+/*       pm.distance = dist; */
+/*       double pow_attn, phase_shift; */
+/*       compute_shift(&pm, &pow_attn, &phase_shift); */
+/*       double recv_power_dBm = tx->gn.tm.power_in_dBm - pow_attn; */
+/*       rx_output[ctr] += pow(10, 0.5*recv_power_dBm/10)*cexp(I*phase_shift); */
+/*     } */
+/*     rx_output[ctr] += pow(rx->recv_noise_power/2, 0.5)*(gaussenv(env) + I*gaussenv(env)); */
+/*     if (env->sim->print_measurements) */
+/*     { */
+/*       printf("Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_output[ctr]), cimag(rx_output[ctr])); */
+/*     } */
+/*     ctr++; */
+/*   } */
+/*   free(rx_output); */
+/* } */
+
+void readout_receiver_array_prealloc(Environment * env)
 {
-  double complex *rx_output;
-  rx_output = malloc(env->num_receivers*sizeof(double complex));
   Receiver * rx;
   Transmitter * tx;
   int tot_tx = env->num_transmitters + env->num_virtual_transmitters;
   int ctr=0;
+  PropagationModel pm;
+  init_propagation_model(&pm, env->sim);
+
   for (rx=env->receivers_array; rx<env->receivers_array + env->num_receivers; rx++)
   {
-    rx_output[ctr] = 0;
+    double complex rx_out = 0;
     for (tx=env->transmitters_array; tx<env->transmitters_array + tot_tx; tx++)
     {
       double dist = distance(&(tx->gn), &(rx->gn));
-      PropagationModel pm;
-      init_propagation_model(&pm, env->sim);
+      printf("Tx id %d Rx id %d distance %lf time %d\n", tx->gn.id, rx->gn.id, dist, env->time);
       pm.distance = dist;
       double pow_attn, phase_shift;
-      compute_shift(&pm, &pow_attn, &phase_shift, env);
+      compute_shift(&pm, &pow_attn, &phase_shift);
       double recv_power_dBm = tx->gn.tm.power_in_dBm - pow_attn;
-      rx_output[ctr] += pow(10, 0.5*recv_power_dBm/10)*cexp(I*phase_shift);
+      rx_out += pow(10, 0.5*recv_power_dBm/10)*cexp(I*phase_shift);
     }
-    rx_output[ctr] += pow(rx->recv_noise_power/2, 0.5)*(gaussenv(env) + I*gaussenv(env));
+    rx_out += pow(rx->recv_noise_power/2, 0.5)*(gaussenv(env) + I*gaussenv(env));
     if (env->sim->print_measurements)
     {
-      printf("Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_output[ctr]), cimag(rx_output[ctr]));
+      printf("Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_out), cimag(rx_out));
     }
     ctr++;
   }
-  free(rx_output);
 }
 
-void compute_shift(PropagationModel * pm, double * power_attn, double * phase_shift, Environment * env)
+void compute_shift(PropagationModel * pm, double * power_attn, double * phase_shift)
 {
-  double dist = pm->distance/env->sim->wavelength;
-  
-  * power_attn = 20*log10(4*PI*dist);
-  * phase_shift = 2*PI*dist;
+  double twopidist = 2*PI*pm->distance/pm->sim->wavelength;
+  * power_attn = 20*log10(2*twopidist);
+  * phase_shift = twopidist;
 }
 
 void populate_from_file(Environment * env, const char * filename)
@@ -337,6 +394,7 @@ void populate_from_file(Environment * env, const char * filename)
     handle_request(env, fp, buff);
   }
   fclose(fp);
+  //env->rx_output = malloc(env->num_receivers*sizeof(double complex));
 }
 
 void handle_request(Environment * env, FILE * fp, const char * req_type)
@@ -350,6 +408,18 @@ void handle_request(Environment * env, FILE * fp, const char * req_type)
   else if (!strcmp(req_type, "Totaltime"))
   {
     fscanf(fp, "%d", &env->sim->total_time);
+  }
+  else if (!strcmp(req_type, "Totaltransmitters"))
+  {
+    fscanf(fp, "%d", &env->_num_total_transmitters);
+    if (env->_num_total_transmitters>0 && env->_num_total_receivers>0)
+      init_environment_malloc(env);
+  }
+  else if (!strcmp(req_type, "Totalreceivers"))
+  {
+    fscanf(fp, "%d", &env->_num_total_receivers);
+    if (env->_num_total_transmitters>0 && env->_num_total_receivers>0)
+      init_environment_malloc(env);
   }
   else if (!strcmp(req_type, "Transmitter"))
   {
@@ -401,12 +471,13 @@ void handle_request(Environment * env, FILE * fp, const char * req_type)
     {
       int num_inst;
       fscanf(fp, "%d", &num_inst);
-      //printf("Number of numbers %d \n", num_inst);
       // node is dynamic
+      //if (env->_nodepath[id] == NULL)
       if (env->_nodepath[id] == NULL)
       {
-	env->_nodepath[id] = malloc(6*MAX_TIME*sizeof(double));
+	env->_nodepath[id] = (double *) malloc(6*MAX_TIME*sizeof(double));
       }
+
       env->node_array[id]->smm.is_static = false;
 
       for (ctr=6*env->total_times[id]; ctr<6*(env->total_times[id]+num_inst); ctr++)
@@ -442,6 +513,8 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
     
       fprintf(fp, "Timedelta %lf\n", env->sim->delta_time);
       fprintf(fp, "Totaltime %d\n", env->sim->total_time);
+      fprintf(fp, "Totaltransmitters %d\n", env->num_transmitters);
+      fprintf(fp, "Totalreceivers %d\n", env->num_receivers);
       Transmitter * tx;
       for (tx=env->transmitters_array; tx!= env->transmitters_array
   	   + env->num_transmitters; tx++)
@@ -484,7 +557,7 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
 	gn = env->node_array[++ctr];
       }
 
-      int num_gauss = 5*MAX_TIME;
+      int num_gauss;
       num_gauss = 1;
       fprintf(fp, "Gaussianrand %d ", num_gauss);
       for (ctr=0; ctr<num_gauss; ctr++)
@@ -524,6 +597,7 @@ void add_node_to_environment_array(Environment * env, GeneralNode * gn)
 
 void print_node_path(Environment * env)
 {
+  printf("Printing node paths\n");
   int ctr, ctr1;
   ctr1=0;
   double * db = env->_nodepath[ctr1];
@@ -558,5 +632,6 @@ void print_current_locations(Environment * env)
 double gaussenv(Environment * env)
 {
   static int numcalls=0;
-  return env->gaussiansamples[numcalls++];
+  //return env->gaussiansamples[numcalls++];
+  return _gaussrand();
 }
