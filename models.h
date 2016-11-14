@@ -1,6 +1,7 @@
 #include <cblas.h>
 #include <complex.h>
 #include <fftw3.h>
+#include <getopt.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -81,6 +82,8 @@ typedef struct
 {
   int _num_total_receivers;
   int _num_total_transmitters;
+  FILE * infile;
+  FILE * outfile;
 
   Simulation * sim;
   int num_receivers;
@@ -94,6 +97,9 @@ typedef struct
   int total_gaussian_samples;
   double gaussiansamples[2];
   double **_nodepath;
+
+  char input_filename[1000];
+  char output_filename[1000];
 } Environment;
 
 int id();
@@ -118,11 +124,11 @@ double distance(GeneralNode * gn1, GeneralNode * gn2);
 // void readout_receiver_array(Environment * env);
 void readout_receiver_array_prealloc(Environment * env);
 void compute_shift(PropagationModel * pm, double * power_attn, double * phase_shift);
-void populate_from_file(Environment * env, const char * filename);
+void populate_from_file(Environment * env);
 void handle_request(Environment * env, FILE * fp, const char * req_type);
-void print_to_file(Environment * env, const char * filename, bool print_state);
+void print_to_file(Environment * env, bool print_state);
 void add_node_to_environment_array(Environment * env, GeneralNode * gn);
 void print_node_path(Environment * env);
 void print_current_locations(Environment * env);
 double gaussenv(Environment * env);
-
+void parse_input(int argc, char * argv[], Environment * env);

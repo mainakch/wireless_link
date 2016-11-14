@@ -77,13 +77,17 @@ void init_environment(Environment * env, Simulation * sim_not_null)
   env->sim = sim_not_null;
   env->time = 0;
   env->total_gaussian_samples = 0;
+  fprintf(stderr, "Opening %s\n", env->input_filename);
+  env->infile = fopen(env->input_filename, "r");
+  env->outfile = fopen(env->output_filename, "w");
+
   if (sim_not_null->generate_path) 
   {
     init_environment_malloc(env);
   }
   else
   {
-    populate_from_file(env, "/tmp/input.txt");
+    populate_from_file(env);
   }
 }
 
@@ -104,6 +108,9 @@ void init_environment_malloc(Environment * env)
 
 void destroy_environment(Environment * env)
 {
+  if (env->infile != NULL)  fclose(env->infile);
+  if (env->outfile != NULL)  fclose(env->outfile);
+
   int ctr=0;
   while (env->_nodepath[ctr] != NULL)
   {
@@ -359,7 +366,7 @@ void readout_receiver_array_prealloc(Environment * env)
     for (tx=env->transmitters_array; tx<env->transmitters_array + tot_tx; tx++)
     {
       double dist = distance(&(tx->gn), &(rx->gn));
-      printf("Tx id %d Rx id %d distance %lf time %d\n", tx->gn.id, rx->gn.id, dist, env->time);
+      // printf("Tx id %d Rx id %d distance %lf time %d\n", tx->gn.id, rx->gn.id, dist, env->time);
       pm.distance = dist;
       double pow_attn, phase_shift;
       compute_shift(&pm, &pow_attn, &phase_shift);
@@ -369,7 +376,7 @@ void readout_receiver_array_prealloc(Environment * env)
     rx_out += pow(rx->recv_noise_power/2, 0.5)*(gaussenv(env) + I*gaussenv(env));
     if (env->sim->print_measurements)
     {
-      printf("Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_out), cimag(rx_out));
+      fprintf(env->outfile, "Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_out), cimag(rx_out));
     }
     ctr++;
   }
@@ -382,18 +389,23 @@ void compute_shift(PropagationModel * pm, double * power_attn, double * phase_sh
   * phase_shift = twopidist;
 }
 
-void populate_from_file(Environment * env, const char * filename)
+void populate_from_file(Environment * env)
 {
-  FILE * fp;
-  char mode[] = "r";
-  char fmt[] = "%s";
-  char buff[LINE_LENGTH];
-  fp = fopen(filename, mode);
-  while (fscanf(fp, fmt, buff) != EOF)
+  if (env->infile != NULL)
   {
-    handle_request(env, fp, buff);
+    char mode[] = "r";
+    char fmt[] = "%s";
+    char buff[LINE_LENGTH];
+    while (fscanf(env->infile, fmt, buff) != EOF)
+    {
+      handle_request(env, env->infile, buff);
+    }
   }
-  fclose(fp);
+  else
+  {
+    fprintf(stderr, "Input file could not be read !\n");
+    exit(EXIT_FAILURE);
+  }
   //env->rx_output = malloc(env->num_receivers*sizeof(double complex));
 }
 
@@ -501,11 +513,10 @@ void handle_request(Environment * env, FILE * fp, const char * req_type)
   }
 }
 
-void print_to_file(Environment * env, const char * filename, bool print_state)
+void print_to_file(Environment * env, bool print_state)
 {
   FILE * fp;
-  fp = fopen(filename, "a");
-
+  fp = env->outfile;
   if (fp != NULL)
   {
     if (print_state)
@@ -565,6 +576,7 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
         fprintf(fp, "%lf ", _gaussrand());
       }
       fprintf(fp, "\n");
+      printf("Written to %s\n", env->output_filename);
     }
     else
     {
@@ -586,7 +598,6 @@ void print_to_file(Environment * env, const char * filename, bool print_state)
 	gn = env->node_array[++ctr];
       }
     }
-    fclose(fp);
   }
 }
 
@@ -634,4 +645,44 @@ double gaussenv(Environment * env)
   static int numcalls=0;
   //return env->gaussiansamples[numcalls++];
   return _gaussrand();
+}
+
+void parse_input(int argc, char * argv[], Environment * env)
+{
+  int gen_path_flag = 1;
+  int print_measurements=1;
+  strcpy(env->input_filename, "/tmp/input.txt");
+  strcpy(env->output_filename, "/tmp/output.txt");
+
+  struct option long_options[] = 
+  {
+    {"generate_path", no_argument, &gen_path_flag, 1},
+    {"no_print_measurements", no_argument, &print_measurements, 0},
+    {"input_filename", required_argument, 0, 'i'},
+    {"output_filename", required_argument, 0, 'o'},
+    {0, 0, 0, 0}
+  };
+
+  int c=0, option_index;
+  c = getopt_long(argc, argv, "i:o:", long_options, &option_index);
+  while (c != -1)
+  {
+    switch (c)
+    {
+      case 0:
+        env->sim->generate_path = gen_path_flag;
+	env->sim->print_measurements = print_measurements;
+        break;
+      case 'i':
+        strcpy(env->input_filename, optarg);
+        break;
+      case 'o':
+        strcpy(env->output_filename, optarg);
+	break;
+      default:
+        fprintf(stderr, "Error parsing options\n");
+	exit(EXIT_FAILURE);
+    }
+    c = getopt_long(argc, argv, "i:o:", long_options, &option_index);
+  }
 }
