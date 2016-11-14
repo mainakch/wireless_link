@@ -263,36 +263,34 @@ void update_virtual_transmitters(Environment * env, int use_only_real)
 {
   if(use_only_real)
   {
-    // ignore the virtual transmitters in env->transmitters_array
-    int ctr1, ctr2;
     env->num_virtual_transmitters = 0;
-    for (ctr1=0; ctr1<env->num_transmitters; ctr1++)
-    {
-      for (ctr2=0; ctr2<env->num_transmitters; ctr2++)
-      {
-	Transmitter * tx1 = env->transmitters_array + ctr1;
-	Transmitter * tx2 = env->transmitters_array + ctr2;
-	if((tx1->is_real_transmitter) &&
-	   (!(tx2->gn.tm.power_in_dBm<-199)))
-	{
-	  // ctr1 points at a transmitter
-	  // ctr2 points at a scatterer
+  }
 
-	  Transmitter tn = env->transmitters_array[env->num_transmitters +
-						   env->num_virtual_transmitters];
-	  init_transmitter(&tn, env->sim);
-	  double dist = distance(&(tx1->gn), &(tx2->gn));
-	  tn.gn.smm.distance_from_actual_source += dist;
-	  tn.gn.tm.start_time += dist/C;
-	  tn.gn.tm.end_time += dist/C;
-	  env->num_virtual_transmitters++;
-	}
+  // ignore the virtual transmitters in env->transmitters_array
+  int ctr1, ctr2, numvt;
+  numvt = env->num_virtual_transmitters;
+  for (ctr1=0; ctr1<env->num_transmitters + numvt; ctr1++)
+  {
+    for (ctr2=0; ctr2<env->num_transmitters + numvt; ctr2++)
+    {
+      Transmitter * tx1 = env->transmitters_array + ctr1;
+      Transmitter * tx2 = env->transmitters_array + ctr2;
+      if((tx1->is_real_transmitter) &&
+         (!(tx2->gn.tm.power_in_dBm<-199)))
+      {
+        // ctr1 points at a transmitter
+        // ctr2 points at a scatterer
+
+        Transmitter tn = env->transmitters_array[env->num_transmitters +
+      					   env->num_virtual_transmitters];
+        init_transmitter(&tn, env->sim);
+        double dist = distance(&(tx1->gn), &(tx2->gn));
+        tn.gn.smm.distance_from_actual_source += dist;
+        tn.gn.tm.start_time += dist/C;
+        tn.gn.tm.end_time += dist/C;
+        env->num_virtual_transmitters++;
       }
     }
-  }
-  else
-  {
-    // TODO: update code for virtual transmitters
   }
 }
 
@@ -318,40 +316,7 @@ double distance(GeneralNode * gn1, GeneralNode *gn2)
   /* return pow(res, 0.5); */
 }
 
-/* void readout_receiver_array(Environment * env) */
-/* { */
-/*   double complex *rx_output; */
-/*   rx_output = malloc(env->num_receivers*sizeof(double complex)); */
-/*   Receiver * rx; */
-/*   Transmitter * tx; */
-/*   int tot_tx = env->num_transmitters + env->num_virtual_transmitters; */
-/*   int ctr=0; */
-/*   for (rx=env->receivers_array; rx<env->receivers_array + env->num_receivers; rx++) */
-/*   { */
-/*     rx_output[ctr] = 0; */
-/*     for (tx=env->transmitters_array; tx<env->transmitters_array + tot_tx; tx++) */
-/*     { */
-/*       double dist = distance(&(tx->gn), &(rx->gn)); */
-/*       printf("Tx id %d Rx id %d distance %lf time %d\n", tx->gn.id, rx->gn.id, dist, env->time); */
-/*       PropagationModel pm; */
-/*       init_propagation_model(&pm, env->sim); */
-/*       pm.distance = dist; */
-/*       double pow_attn, phase_shift; */
-/*       compute_shift(&pm, &pow_attn, &phase_shift); */
-/*       double recv_power_dBm = tx->gn.tm.power_in_dBm - pow_attn; */
-/*       rx_output[ctr] += pow(10, 0.5*recv_power_dBm/10)*cexp(I*phase_shift); */
-/*     } */
-/*     rx_output[ctr] += pow(rx->recv_noise_power/2, 0.5)*(gaussenv(env) + I*gaussenv(env)); */
-/*     if (env->sim->print_measurements) */
-/*     { */
-/*       printf("Receiver %d %d %10.6e %10.4e \n", rx->gn.id, env->time, creal(rx_output[ctr]), cimag(rx_output[ctr])); */
-/*     } */
-/*     ctr++; */
-/*   } */
-/*   free(rx_output); */
-/* } */
-
-void readout_receiver_array_prealloc(Environment * env)
+void readout_receiver_array(Environment * env)
 {
   Receiver * rx;
   Transmitter * tx;
@@ -387,6 +352,19 @@ void compute_shift(PropagationModel * pm, double * power_attn, double * phase_sh
   double twopidist = 2*PI*pm->distance/pm->sim->wavelength;
   * power_attn = 20*log10(2*twopidist);
   * phase_shift = twopidist;
+}
+
+void compute_doppler(GeneralNode * gn_dest, GeneralNode * gn_source, double * doppler_shift, Simulation * sim)
+{
+  double pos_source[3];
+  double vel_source[3];
+ 
+  cblas_dcopy(3, gn_source->smm.position, 1, pos_source, 1);
+  cblas_daxpy(3, -1, gn_dest->smm.position, 1, pos_source, 1);
+  cblas_dcopy(3, gn_source->smm.velocity, 1, vel_source, 1);
+  cblas_daxpy(3, -1, gn_dest->smm.velocity, 1, vel_source, 1);
+
+  * doppler_shift = -cblas_ddot(3, pos_source, 1, vel_source, 1)/sim->wavelength;
 }
 
 void populate_from_file(Environment * env)
