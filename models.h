@@ -28,14 +28,10 @@ typedef struct
   double boundary_tolerance;
   int total_time;
 
-  bool generate_path;
-  bool print_measurements;
-
 } Simulation;
 
 typedef struct 
 {
-  Simulation *sim;
   double velocity[3];
   double position[3];
   double acceleration_factor;
@@ -45,7 +41,6 @@ typedef struct
 
 typedef struct
 {
-  Simulation *sim;
   double power_in_dBm;
   double start_time;
   double end_time;
@@ -55,7 +50,6 @@ typedef struct
 
 typedef struct
 {
-  Simulation *sim;
   double distance;
 } PropagationModel;
 
@@ -80,12 +74,9 @@ typedef struct
 
 typedef struct
 {
-  int _num_total_receivers;
-  int _num_total_transmitters;
-  FILE * infile;
-  FILE * outfile;
+  int _num_receivers_ctr;
+  int _num_transmitters_ctr;
 
-  Simulation * sim;
   int num_receivers;
   int num_transmitters;
   int num_virtual_transmitters;
@@ -93,42 +84,45 @@ typedef struct
   Transmitter * transmitters_array;
   int time;
   GeneralNode ** node_array;
-  int * total_times;
-  int total_gaussian_samples;
-  double gaussiansamples[2];
-  double **_nodepath;
 
+  double complex * unit_power_gaussian_noise;
+
+  double frequency;
+  double wavelength;
+  double delta_time;
+  double max_limit;
+  double min_limit;
+  double boundary_tolerance;
+  int total_time;
+  
+} Environment;
+
+typedef struct
+{
+  FILE * infile;
+  FILE * outfile;
   char input_filename[1000];
   char output_filename[1000];
-} Environment;
+} Filereader;
 
 int id();
 void init_simulation(Simulation * sim_not_null);
-void init_spatial_motion_model(SpatialMotionModel * smm, Simulation * sim_not_null);
-void init_transmission_model(TransmissionModel * tm, Simulation * sim_not_null);
-void init_propagation_model(PropagationModel * pm, Simulation * sim_not_null);
-void init_general_node(GeneralNode * gn, Simulation * sim_not_null);
-void init_transmitter(Transmitter * tn, Simulation * sim_not_null);
-void init_receiver(Receiver * rc, Simulation * sim_not_null);
-void init_environment(Environment * env, Simulation * sim_not_null);
+void init_spatial_motion_model(SpatialMotionModel * smm);
+void init_transmission_model(TransmissionModel * tm);
+void init_propagation_model(PropagationModel * pm);
+void init_general_node(GeneralNode * gn);
+void init_transmitter(Transmitter * tn);
+void init_receiver(Receiver * rc);
+void init_environment(Environment * env);
 void init_environment_malloc(Environment * env);
+void init_filereader(Filereader * fr);
 void destroy_environment(Environment * env);
+void destroy_filereader(Filereader * fr);
+
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
-void add_transmitter_with_position(Environment * env, double * pos);
-void add_static_scatterer_with_position(Environment * env, double * pos);
-void add_static_receiver(Environment * env, double * pos);
-void _update_spatial_parameters(SpatialMotionModel * smm, GeneralNode * gn);
-void update_all_locations(Environment * env);
-void update_virtual_transmitters(Environment * env, int use_only_real);
-double distance(GeneralNode * gn1, GeneralNode * gn2);
-void readout_receiver_array(Environment * env);
-void compute_shift(PropagationModel * pm, double * power_attn, double * phase_shift);
-void compute_doppler_shift(GeneralNode * gn1, GeneralNode * gn2, double * doppler_shift, Simulation * sim);
-void populate_from_file(Environment * env);
-void handle_request(Environment * env, FILE * fp, const char * req_type);
-void print_to_file(Environment * env, bool print_state);
-void add_node_to_environment_array(Environment * env, GeneralNode * gn);
-void print_node_path(Environment * env);
-void print_current_locations(Environment * env);
+
+//void add_node_to_environment_array(Environment * env, GeneralNode * gn);
+//void print_node_path(Environment * env);
+//void print_current_locations(Environment * env);
 double gaussenv(Environment * env);
-void parse_input(int argc, char * argv[], Environment * env);
+void parse_input(int argc, char * argv[], Filereader * fr);
