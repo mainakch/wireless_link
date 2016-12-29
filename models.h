@@ -2,6 +2,9 @@
 #include <complex.h>
 #include <fftw3.h>
 #include <getopt.h>
+#include <gsl/gsl_linalg.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_permutation.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -10,7 +13,7 @@
 #include <time.h>
 
 
-#define C 299792458 // speed of light in SI units
+#define C 299792458 
 #define PI 3.141592654
 #define MAX_TRANSMITTERS 200 // maximum number of transmitters, real or virtual
 #define MAX_RECEIVERS 6400 // maximum number of receivers
@@ -74,6 +77,15 @@ typedef struct
 
 typedef struct
 {
+  double unit_normal[3];
+  double unit_length_normal[3];
+  double unit_width_normal[3];
+  double center_point[3];
+  double length, width;
+} Perfectreflector;
+  
+typedef struct
+{
   int _num_receivers_ctr;
   int _num_transmitters_ctr;
 
@@ -113,6 +125,11 @@ void init_propagation_model(PropagationModel * pm);
 void init_general_node(GeneralNode * gn);
 void init_transmitter(Transmitter * tn);
 void init_receiver(Receiver * rc);
+void init_perfectreflector(Perfectreflector * pr,
+			   const double * normal,
+			   const double * center_point,
+			   const double * length_normal,
+			   double length, double width);
 void init_environment(Environment * env);
 void init_environment_malloc(Environment * env);
 void init_filereader(Filereader * fr);
@@ -124,5 +141,8 @@ double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 //void add_node_to_environment_array(Environment * env, GeneralNode * gn);
 //void print_node_path(Environment * env);
 //void print_current_locations(Environment * env);
-double gaussenv(Environment * env);
+//double gaussenv(Environment * env);
+void interaction_scatterer(void * sc, Transmitter * tx,
+			   Transmitter * out_array, int * number);
 void parse_input(int argc, char * argv[], Filereader * fr);
+void cross_product(const double * v1, const double * v2, double * v3);

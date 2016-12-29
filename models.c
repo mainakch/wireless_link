@@ -63,6 +63,22 @@ void init_receiver(Receiver * rc)
   rc->recv_noise_power = pow(10, -16);
 }
 
+void init_perfectreflector(Perfectreflector * pr,
+			   const double * normal,
+			   const double * center_point,
+			   const double * length_normal,
+			   double length, double width)
+{
+  double norm = cblas_dnrm2(3, normal, 1);
+  cblas_daxpy(3, 1/norm, normal, 1, pr->unit_normal, 1);
+  cblas_dcopy(3, center_point, 1, pr->center_point, 1);
+  norm = cblas_dnrm2(3, length_normal, 1);
+  cblas_daxpy(3, 1/norm, length_normal, 1, pr->unit_length_normal, 1);
+  cross_product(pr->unit_length_normal, pr->unit_normal, pr->unit_width_normal);
+  pr->width = width;
+  pr->length = length;
+  
+}
 void init_environment(Environment * env)
 {
   if (!(env->num_transmitters > 0 && env->num_receivers > 0)
@@ -169,11 +185,55 @@ double _gaussrand() // http://c-faq.com/lib/gaussian.html
 /*   } */
 /* } */
 
-double gaussenv(Environment * env)
+/* double gaussenv(Environment * env) */
+/* { */
+/*   static int numcalls=0; */
+/*   //return env->gaussiansamples[numcalls++]; */
+/*   return _gaussrand(); */
+/* } */
+
+void interaction_scatterer(void * sc, Transmitter * tx,
+			   Transmitter * out_array, int * number)
 {
-  static int numcalls=0;
-  //return env->gaussiansamples[numcalls++];
-  return _gaussrand();
+  // assume that sc is perfectreflector
+  Perfectreflector * pr = (Perfectreflector *) sc;
+
+  // check if source is on the reflective side
+  double pos[3];
+  cblas_dcopy(3, tx->gn.smm.position, 1, pos, 1);
+  cblas_daxpy(3, -1, pr->center_point, 1, pos, 1);
+  if (cblas_ddot(3, pos, 1, pr->unit_normal, 1) > 0)
+  {
+    //facing non reflective side
+    //return after setting number of virtual sources added to zero
+    *number = 0; 
+    return;
+  }
+  
+  // source is on the reflective side now
+  // compute position transformation
+  // pos contains difference of tx - center_point
+  double factor0 = -2*cblas_ddot(3, pos, 1, pr->unit_normal, 1);
+  double reflected_position[3];
+  cblas_dcopy(3, tx->gn.smm.position, 1, reflected_position, 1);
+  cblas_daxpy(3, factor0, pr->unit_normal, 1, reflected_position, 1);
+  
+  // compute velocity transformation
+  double reflected_velocity[3];
+  double factor1;
+  cblas_dcopy(3, tx->gn.smm.velocity, 1, reflected_velocity, 1);
+  factor1 = -2*cblas_ddot(3, tx->gn.smm.velocity, 1, pr->unit_normal, 1);
+  cblas_daxpy(3, factor1, pr->unit_normal, 1, reflected_velocity, 1);
+  
+  // compute power attenuation factor
+  double norm = cblas_dnrm2(3, pos, 1);
+  double cosangle = abs(factor0/(2*norm));
+  double factor2 = pr->length*pr->width*cosangle/(4*PI*norm*norm);
+
+  // add virtual transmitter to the array
+  // TODO
+  *number = 1;
+  
 }
 
 void parse_input(int argc, char * argv[], Filereader * fr)
@@ -208,4 +268,11 @@ void parse_input(int argc, char * argv[], Filereader * fr)
     }
     c = getopt_long(argc, argv, "i:o:", long_options, &option_index);
   }
+}
+
+void cross_product(const double * v1, const double * v2, double * v3)
+{
+  v3[0] = v1[1]*v2[2] - v1[2]*v2[1];
+  v3[1] = v1[2]*v2[0] - v1[0]*v2[2];
+  v3[2] = v1[0]*v2[1] - v1[1]*v2[0];
 }
