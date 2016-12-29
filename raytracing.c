@@ -6,16 +6,15 @@ int counter()
   return ctr++;
 }
 
-void init_ray_ribbon(Transmitter * tx, Receiver * rx, Perfectreflector * patcharray,
-		     Rayribbon * rb, int num_segments, int num_reflectors,
-		     int num_reflections)
+void init_ray_ribbon(Transmitter * tx, Receiver * rx, Perfectreflector ** patcharray,
+		     Rayribbon * rb, int num_segments, int num_reflections)
 {
   if (rb == NULL)
   {
     fprintf(stderr, "Null pointer ray ribbon. Cannot proceed.\n");
     return;
   }
-  
+
   double phi, theta;
   Ribbonnode *rnprev = 0;
   int ctr;
@@ -29,7 +28,7 @@ void init_ray_ribbon(Transmitter * tx, Receiver * rx, Perfectreflector * patchar
       double direction[3] = {cos(phi), sin(phi)*cos(theta), sin(phi)*sin(theta)};
       cblas_dcopy(3, direction, 1, rn->current->unit_direction, 1);
 
-      bool hit_destination = process_vertical_chain(rn, patcharray, num_reflectors, num_reflections);
+      bool hit_destination = process_vertical_chain(rn, patcharray, num_reflections);
 
       if (hit_destination)
       {
@@ -84,52 +83,6 @@ void destroy_ray_ribbon(Rayribbon * rb)
   }
 }
 
-/* void unlink_ray_ribbon_node(Rayribbon * rb, Ribbonnode * rn) */
-/* { */
-/*   // make sure rn is the highest node possible in the vertical strip */
-/*   /\* while (rn->up != NULL) *\/ */
-/*   /\* { *\/ */
-/*   /\*   rn = rn->up; *\/ */
-/*   /\* } *\/ */
-  
-/*   if (rn->right == NULL && rn->left == NULL) */
-/*   { */
-/*     fprintf(stderr, "Both null\n"); */
-/*     rb->head = NULL; */
-/*     // if node to the left or node to the right is null */
-/*     // set head and tail of ribbon to NULL */
-/*   } */
-/*   else if (rn->right == NULL && rn->left != NULL) */
-/*   { */
-/*     fprintf(stderr, "Right null\n");     */
-/*   } */
-/*   else if (rn->left == NULL && rn->right != NULL) */
-/*   { */
-/*     fprintf(stderr, "Left null\n");         */
-/*     rb->head = rn->right; */
-/*     rn->right->left == NULL; */
-/*   } */
-/*   else */
-/*   { */
-/*     fprintf(stderr, "None null\n");             */
-/*     // if nodes to the left and right are not null */
-/*     rn->right->left = rn->left; */
-/*     rn->left->right = rn->right; */
-/*   } */
-/*   //destroy_ray_ribbon_vertical_down(rn); */
-/* } */
-
-/* void destroy_ray_ribbon_vertical(Ribbonnode * rn) */
-/* { */
-/*   if (rn == NULL) return; */
-/*   while (rn->up != NULL) */
-/*   { */
-/*     rn = rn->up; */
-/*   } */
-/*   destroy_ray_ribbon_vertical_down(rn); */
-  
-/* } */
-
 void destroy_ray_ribbon_vertical_down(Ribbonnode * rn)
 {
   if (rn == NULL) return;
@@ -151,7 +104,6 @@ complex double compute_intersection(Halfinfiniteray * hr, Perfectreflector * pr)
 
   // check if t lies within the bounds of the patch
 
-
   if (t < INFINITY)
   {
     // Verify the signs
@@ -171,7 +123,7 @@ complex double compute_intersection(Halfinfiniteray * hr, Perfectreflector * pr)
     }
   }
 
-  if (t < INFINITY)
+  if (t < 1e4)
   {
     cblas_dcopy(3, hr->point, 1, hr->end_pt, 1);
     cblas_daxpy(3, t, hr->unit_direction, 1, hr->end_pt, 1);
@@ -181,53 +133,29 @@ complex double compute_intersection(Halfinfiniteray * hr, Perfectreflector * pr)
   return t + I*sgn; // if sgn positive then ray is blocked
 }
 
-/* void process_rayribbon(Rayribbon * rb, Perfectreflector * pr, */
-/* 		       int num_reflectors, int num_reflections) // last one is the destination patch */
-/* { */
-/*   Ribbonnode * rn = rb->head; */
-
-/*   while (rn != NULL) */
-/*   { */
-/*     fprintf(stderr, "Processing %d\n", rn->ctr); */
-/*     bool hit_destination = process_vertical_chain(rn, pr, num_reflectors, num_reflections); */
-/*     Ribbonnode * rnnext = rn->right; */
-    
-/*     if (!hit_destination) */
-/*     { */
-/*       fprintf(stderr, "Removing  %d\n", rn->ctr); */
-/*       unlink_ray_ribbon_node(rb, rn); */
-/*       if (rn->left != NULL) rnnext = rn->left->right;       */
-/*       destroy_ray_ribbon_vertical_down(rn); */
-/*       fprintf(stderr, "Right is %p\n", (void *) rnnext); */
-/*     } */
-/*     else */
-/*     { */
-/*       fprintf(stderr, "Bingo! Keeping  %d\n", rn->ctr); */
-/*     } */
-/*     rn = rnnext; */
-    
-/*   } */
-/* } */
-
-bool process_vertical_chain(Ribbonnode * rn, Perfectreflector * pr,
-			    int num_reflectors, int num_reflections)
+bool process_vertical_chain(Ribbonnode * rn, Perfectreflector ** pr, int num_reflections)
 {
   // this function computes whether a ray can hit the destination after a max num_reflections
-  int ctr=0, ctrindex=-1;
+  int ctr=0, ctrindex=-1, num_reflectors=0;
   double tmin = INFINITY, sgn;
-  
-  while(ctr<num_reflectors)
+
+  Perfectreflector * prsurf = *(pr + ctr);
+  while(prsurf != NULL)
   {
-    complex double dbl = compute_intersection(rn->current, pr+ctr);
-    if (creal(dbl) < tmin)
+    complex double dbl = compute_intersection(rn->current, prsurf);
+    if (creal(dbl) < tmin && ctr != rn->surface_index)
     {
       tmin = creal(dbl);
       sgn = cimag(dbl);
-      // printf("Hit reflector %d\n", ctr);
       ctrindex = ctr;
+      /* fprintf(stderr, "For ribbonnode: "); */
+      /* print_ribbonnode(rn); */
+      /* fprintf(stderr, "%lf, %lf, Index: %d \n", creal(dbl), cimag(dbl), ctrindex); */
     }
-    ctr++;    
+    ctr++;
+    prsurf = *(pr+ctr);
   }
+  num_reflectors = ctr;
 
   if (sgn>0 || tmin>1e4) return false;
   if (ctrindex == num_reflectors-1)
@@ -262,13 +190,13 @@ bool process_vertical_chain(Ribbonnode * rn, Perfectreflector * pr,
 
   // next update direction
   cblas_dcopy(3, rn->current->unit_direction, 1, rn_next->current->unit_direction, 1);
-  double factor = -2*cblas_ddot(3, rn->current->unit_direction, 1, (pr+ctrindex)->unit_normal, 1);
-  cblas_daxpy(3, factor, (pr+ctrindex)->unit_normal, 1, rn_next->current->unit_direction, 1);
+  Perfectreflector * prsurface = pr[ctrindex];
+  double factor = -2*cblas_ddot(3, rn->current->unit_direction, 1, prsurface->unit_normal, 1);
+  cblas_daxpy(3, factor, prsurface->unit_normal, 1, rn_next->current->unit_direction, 1);
 
   // update pointers 
   rn->down = rn_next;
-
-  return process_vertical_chain(rn_next, pr, num_reflectors, num_reflections);
+  return process_vertical_chain(rn_next, pr, num_reflections);
 }
 
 void print_vector(const double * db)
@@ -430,7 +358,7 @@ void compute_averaging_coefficients(double * point, Ribbonnode ** node_array, do
 }
 
 Ribbonnode * refine_ribbonnode(Ribbonnode ** node_array, double * point, Ribbonnode * rn,
-			       Perfectreflector * pr)
+			       Perfectreflector ** pr)
 {
   Ribbonnode * node_array_mod[3];
   int ctr;
@@ -443,7 +371,7 @@ Ribbonnode * refine_ribbonnode(Ribbonnode ** node_array, double * point, Ribbonn
 }
 
 static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, double * point, Ribbonnode * rn, bool null_node_array,
-				       Perfectreflector * pr)
+				       Perfectreflector ** pr)
 {
   // null node array should be called with false otherwise segmentation fault or memory leak will occur!
 
@@ -469,7 +397,7 @@ static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, double *
   double weights[3];
   compute_averaging_coefficients(point, node_array, weights);
   compute_average_ribbonnode(rn, node_array, weights);
-  bool has_hit = process_vertical_chain(rn, pr, 3, 3); //update with num reflectors TODO
+  bool has_hit = process_vertical_chain(rn, pr, 3);
 
   if (has_hit)
   {
@@ -506,7 +434,7 @@ long type_vertical_strip(Ribbonnode * rn)
 }
 
 Ribbonnode ** vertical_strip_for_points(Ribbonnode ** nodearray, double ** points,
-					int num_points, Perfectreflector * pr)
+					int num_points, Perfectreflector ** pr)
 {
   int ctr=0;
   Ribbonnode ** vertical_strips = malloc(num_points*sizeof(Ribbonnode *));

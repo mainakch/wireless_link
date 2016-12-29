@@ -63,12 +63,12 @@ void init_receiver(Receiver * rc)
   rc->recv_noise_power = pow(10, -16);
 }
 
-void init_perfectreflector(Perfectreflector * pr,
-			   const double * normal,
+Perfectreflector * init_perfectreflector(const double * normal,
 			   const double * center_point,
 			   const double * length_normal,
 			   double length, double width)
 {
+  Perfectreflector * pr = calloc(1, sizeof(Perfectreflector));
   double norm = cblas_dnrm2(3, normal, 1);
   cblas_daxpy(3, 1/norm, normal, 1, pr->unit_normal, 1);
   cblas_dcopy(3, center_point, 1, pr->center_point, 1);
@@ -77,8 +77,15 @@ void init_perfectreflector(Perfectreflector * pr,
   cross_product(pr->unit_length_normal, pr->unit_normal, pr->unit_width_normal);
   pr->width = width;
   pr->length = length;
-  
+  return pr;
 }
+
+Perfectreflector ** init_perfectreflectorarray(int number)
+{
+  Perfectreflector ** pr = calloc(number, sizeof(Perfectreflector *));
+  return pr;
+}
+
 void init_environment(Environment * env)
 {
   if (!(env->num_transmitters > 0 && env->num_receivers > 0)
@@ -126,6 +133,22 @@ void destroy_filereader(Filereader * fr)
 {
   if (fr->infile != NULL)  fclose(fr->infile);
   if (fr->outfile != NULL)  fclose(fr->outfile);
+}
+
+void destroy_perfectreflector(Perfectreflector * pr)
+{
+  free(pr);
+}
+
+void destroy_perfectreflectorarray(Perfectreflector ** pr_begin)
+{
+  int ctr = 0;
+  while (*(pr_begin + ctr) != NULL)
+  {
+    destroy_perfectreflector(*(pr_begin + ctr));
+    ctr++;
+  }
+  free(pr_begin);
 }
 
 double _gaussrand() // http://c-faq.com/lib/gaussian.html

@@ -125,16 +125,18 @@ void init_propagation_model(PropagationModel * pm);
 void init_general_node(GeneralNode * gn);
 void init_transmitter(Transmitter * tn);
 void init_receiver(Receiver * rc);
-void init_perfectreflector(Perfectreflector * pr,
-			   const double * normal,
+Perfectreflector * init_perfectreflector(const double * normal,
 			   const double * center_point,
 			   const double * length_normal,
 			   double length, double width);
+Perfectreflector ** init_perfectreflectorarray(int number);
 void init_environment(Environment * env);
 void init_environment_malloc(Environment * env);
 void init_filereader(Filereader * fr);
 void destroy_environment(Environment * env);
 void destroy_filereader(Filereader * fr);
+void destroy_perfectreflector(Perfectreflector * pr);
+void destroy_perfectreflectorarray(Perfectreflector ** pr_begin);
 
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 
