@@ -13,7 +13,6 @@ struct half_infinite_ray
 struct ribbon_node
 {
         struct half_infinite_ray *current;
-        struct ribbon_node *right;
         struct ribbon_node *down;
         bool hit_destination_patch;
         int num_reflections;
@@ -26,6 +25,13 @@ struct ray_ribbon
         struct ribbon_node *head;
 };
 
+struct ray_ribbon_array
+{
+        struct ray_ribbon **ribbons;
+        int max_len;
+        int current_len;
+};
+
 struct path
 {
         struct ray_ribbon *rb;
@@ -35,16 +41,19 @@ struct path
         double phase;
 };
 
-void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
-                     const struct perfect_reflector **patcharray,
-                     struct ray_ribbon *rb, int num_segments,
-                     int num_reflections);
+void init_ray_ribbon_array(int number, struct ray_ribbon_array *rarr);
+void populate_ray_ribbon_array(struct transmitter *tx, struct receiver *rx,
+                               const struct perfect_reflector **patcharray,
+                               struct ray_ribbon_array *rarr,
+                               int num_segments, int num_reflections);
 struct ribbon_node *init_ribbonnode();
 void destroy_ray_ribbon(struct ray_ribbon *rb);
+void destroy_ray_ribbon_array(struct ray_ribbon_array *array);
 void unlink_ray_ribbon_node(struct ray_ribbon *rb, struct ribbon_node *rn);
 //assume that each path hits destination patch only once
 void destroy_ray_ribbon_vertical_down(struct ribbon_node *rb);
 
+bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb);
 complex double compute_intersection(struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr);
 bool process_vertical_chain(struct ribbon_node *rn,
@@ -52,6 +61,7 @@ bool process_vertical_chain(struct ribbon_node *rn,
                             int num_reflections);
 void print_vector(const double *db);
 void print_rayribbon(const struct ray_ribbon *rb);
+void print_ray_ribbon_array(const struct ray_ribbon_array *rarr);
 void print_vertical_strip(const struct ribbon_node *rn);
 void print_ribbonnode(const struct ribbon_node *rn);
 int count_segments(const struct ribbon_node *rn);

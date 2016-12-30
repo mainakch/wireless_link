@@ -12,16 +12,11 @@ int counter()
         return ctr++;
 }
 
-void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
-                     const struct perfect_reflector **ref_arr,
-                     struct ray_ribbon *rb,
-                     int num_divs, int num_ref)
+void populate_ray_ribbon_array(struct transmitter *tx, struct receiver *rx,
+                               const struct perfect_reflector **ref_arr,
+                               struct ray_ribbon_array *rarr,
+                               int num_divs, int num_ref)
 {
-        if (rb == NULL) {
-                fprintf(stderr, "Null pointer ray ribbon. Cannot proceed.\n");
-                return;
-        }
-
         double phi, theta;
         struct ribbon_node *rnprev = 0;
         for (phi = 0; phi < 2 * PI; phi += 2 * PI / num_divs) {
@@ -40,20 +35,12 @@ void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
                                                               num_ref);
 
                         if (hit_des) {
-                                if (rb->head == NULL) {
-                                        rb->head = rn;
-                                }
-                                else {
-                                        //rn->left = rnprev;
-                                        if (rnprev != NULL)
-                                                rnprev->right = rn;
-                                }
-                                rnprev = rn;
+                                struct ray_ribbon *rb =
+                                        malloc(sizeof(struct ray_ribbon));
+                                rb->head = rn;
+                                add_ray_ribbon(rarr, rb);
 
-                                // check number of non collinear
-                                // points; if more than 4, break
-                        }
-                        else {
+                        } else {
                                 destroy_ray_ribbon_vertical_down(rn);
                         }
 
@@ -61,12 +48,18 @@ void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
         }
 }
 
+void init_ray_ribbon_array(int number, struct ray_ribbon_array *rarr)
+{
+        rarr->ribbons = calloc(number, sizeof(struct ray_ribbon *));
+        rarr->max_len = number;
+        rarr->current_len = 0;
+}
+
 struct ribbon_node *init_ribbonnode()
 {
-        struct ribbon_node *rn;
-        rn = malloc(sizeof(struct ribbon_node));
+        struct ribbon_node *rn = malloc(sizeof(struct ribbon_node));
         rn->current = malloc(sizeof(struct half_infinite_ray));
-        rn->down = rn->right = 0;
+        rn->down = 0;
         rn->ctr = counter();
         rn->num_reflections = 0;
         rn->hit_destination_patch = false;
@@ -76,15 +69,18 @@ struct ribbon_node *init_ribbonnode()
 
 void destroy_ray_ribbon(struct ray_ribbon *rb)
 {
-        struct ribbon_node *rn = 0;
-        if (rb != NULL) {
-                rn = rb->head;
-                while (rn != NULL) {
-                        struct ribbon_node *rnv = rn->right;
-                        destroy_ray_ribbon_vertical_down(rn);
-                        rn = rnv;
-                }
+        destroy_ray_ribbon_vertical_down(rb->head);
+}
+
+void destroy_ray_ribbon_array(struct ray_ribbon_array *array)
+{
+        int ctr = 0;
+        while (*(array->ribbons + ctr) != NULL) {
+                destroy_ray_ribbon(*(array->ribbons + ctr));
+                free(*(array->ribbons + ctr));
+                ctr++;
         }
+        free(array->ribbons);
 }
 
 void destroy_ray_ribbon_vertical_down(struct ribbon_node *rn)
@@ -94,6 +90,19 @@ void destroy_ray_ribbon_vertical_down(struct ribbon_node *rn)
         struct ribbon_node *rndown = rn->down;
         free(rn);
         destroy_ray_ribbon_vertical_down(rndown);
+}
+
+bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb)
+{
+        if (array->current_len >= array->max_len) {
+                // automatic resizing
+                array->ribbons = realloc(array->ribbons, 2 * array->max_len);
+                *(array->ribbons + array->max_len) = 0;
+                array->max_len *= 2;
+        }
+
+        *(array->ribbons + array->current_len) = rb;
+        array->current_len += 1;
 }
 
 complex double compute_intersection(struct half_infinite_ray *hr,
@@ -171,7 +180,7 @@ bool process_vertical_chain(struct ribbon_node *rn,
         // only case remaining is if there is intersection with
         // reflector and number of reflections is small
         struct ribbon_node *rn_next = malloc(sizeof(struct ribbon_node));
-        rn_next->right = rn_next->down = 0;
+        rn_next->down = 0;
         rn_next->current = calloc(1, sizeof(struct half_infinite_ray));
         rn_next->hit_destination_patch = false;
         rn_next->num_reflections = rn->num_reflections + 1;
@@ -220,8 +229,20 @@ void print_rayribbon(const struct ray_ribbon *rb)
                         rn_next = rn_next->down;
                         ctr1++;
                 }
-                rn = rn->right;
+                rn = NULL;
                 ctr++;
+        }
+}
+
+void print_ray_ribbon_array(const struct ray_ribbon_array *rarr)
+{
+        struct ray_ribbon * rb;
+        rb = *(rarr->ribbons);
+        int ctr = 0;
+        while (rb != NULL) {
+                print_vertical_strip(rb->head);
+                ctr++;
+                rb = *(rarr->ribbons + ctr);
         }
 }
 
