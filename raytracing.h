@@ -7,7 +7,7 @@ struct half_infinite_ray
         double point[3];
         double unit_direction[3];
         double end_pt[3];
-        
+
 };
 
 struct ribbon_node
@@ -43,7 +43,7 @@ struct ribbon_node *init_ribbonnode();
 void destroy_ray_ribbon(struct ray_ribbon *rb);
 void unlink_ray_ribbon_node(struct ray_ribbon *rb, struct ribbon_node *rn);
 //assume that each path hits destination patch only once
-void destroy_ray_ribbon_vertical_down(struct ribbon_node *rb); 
+void destroy_ray_ribbon_vertical_down(struct ribbon_node *rb);
 
 complex double compute_intersection(struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr);
@@ -75,4 +75,3 @@ struct ribbon_node **vertical_strip_for_points(struct ribbon_node **nodearray,
                                         const struct perfect_reflector **pr);
 struct path *generate_all_paths(struct transmitter *tn, struct receiver *rxarray,
                           struct perfect_reflector *pr);
-                          

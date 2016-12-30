@@ -21,7 +21,7 @@ void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
                 fprintf(stderr, "Null pointer ray ribbon. Cannot proceed.\n");
                 return;
         }
-        
+
         double phi, theta;
         struct ribbon_node *rnprev = 0;
         for (phi = 0; phi < 2 * PI; phi += 2 * PI / num_divs) {
@@ -34,11 +34,11 @@ void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
                                                sin(phi) * sin(theta)};
                         cblas_dcopy(3, direction, 1,
                                     rn->current->unit_direction, 1);
-                        
+
                         bool hit_des = process_vertical_chain(rn,
                                                               ref_arr,
                                                               num_ref);
-                        
+
                         if (hit_des) {
                                 if (rb->head == NULL) {
                                         rb->head = rn;
@@ -49,14 +49,14 @@ void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
                                                 rnprev->right = rn;
                                 }
                                 rnprev = rn;
-                                
+
                                 // check number of non collinear
                                 // points; if more than 4, break
                         }
                         else {
                                 destroy_ray_ribbon_vertical_down(rn);
                         }
-                        
+
                 }
         }
 }
@@ -94,7 +94,7 @@ void destroy_ray_ribbon_vertical_down(struct ribbon_node *rn)
         struct ribbon_node *rndown = rn->down;
         free(rn);
         destroy_ray_ribbon_vertical_down(rndown);
-} 
+}
 
 complex double compute_intersection(struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr)
@@ -106,17 +106,17 @@ complex double compute_intersection(struct half_infinite_ray *hr,
         t = -cblas_ddot(3, diff, 1, pr->unit_normal, 1)
                 /cblas_ddot(3, hr->unit_direction, 1, pr->unit_normal, 1);
         //fprintf(stderr, "t obtained is %lf\n", t);
-        
+
         // check if t lies within the bounds of the patch
-        
+
         if (t < INFINITY) {
                 // Verify the signs
                 cblas_daxpy(3, t, hr->unit_direction, 1, diff, 1);
-                
+
                 //print_vector(diff);
                 //print_vector(pr->unit_length_normal);
                 //print_vector(pr->unit_width_normal);
-                
+
                 double lengtht = cblas_ddot(3, diff, 1,
                                             pr->unit_length_normal, 1);
                 double widtht = cblas_ddot(3, diff, 1,
@@ -128,12 +128,12 @@ complex double compute_intersection(struct half_infinite_ray *hr,
                         t = INFINITY;
                 }
         }
-        
+
         if (t < 1e4) {
                 cblas_dcopy(3, hr->point, 1, hr->end_pt, 1);
                 cblas_daxpy(3, t, hr->unit_direction, 1, hr->end_pt, 1);
         }
-        
+
         sgn = cblas_ddot(3, hr->unit_direction, 1, pr->unit_normal, 1);
         return t + I * sgn; // if sgn positive then ray is blocked
 }
@@ -146,7 +146,7 @@ bool process_vertical_chain(struct ribbon_node *rn,
         // destination after a max num_reflections
         int ctr=0, ctrindex=-1, num_reflectors=0;
         double tmin = INFINITY, sgn;
-        
+
         const struct perfect_reflector *prsurf = *(pr + ctr);
         while(prsurf != NULL) {
                 complex double dbl = compute_intersection(rn->current, prsurf);
@@ -159,15 +159,15 @@ bool process_vertical_chain(struct ribbon_node *rn,
                 prsurf = *(pr + ctr);
         }
         num_reflectors = ctr;
-        
+
         if (sgn>0 || tmin>1e4) return false;
         if (ctrindex == num_reflectors - 1) {
                 rn->hit_destination_patch = true;
                 return true;
         }
-        
+
         if (rn->num_reflections > num_reflections) return false;
-        
+
         // only case remaining is if there is intersection with
         // reflector and number of reflections is small
         struct ribbon_node *rn_next = malloc(sizeof(struct ribbon_node));
@@ -175,23 +175,23 @@ bool process_vertical_chain(struct ribbon_node *rn,
         rn_next->current = calloc(1, sizeof(struct half_infinite_ray));
         rn_next->hit_destination_patch = false;
         rn_next->num_reflections = rn->num_reflections + 1;
-        
+
         cblas_dcopy(3, rn->current->point, 1,
                     rn_next->current->point, 1);
         cblas_daxpy(3, tmin, rn->current->unit_direction, 1,
                     rn_next->current->point, 1);
         rn_next->surface_index = ctrindex;
-        
+
         // next update direction
         cblas_dcopy(3, rn->current->unit_direction, 1,
                     rn_next->current->unit_direction, 1);
-        const struct perfect_reflector *prsurface = pr[ctrindex]; 
+        const struct perfect_reflector *prsurface = pr[ctrindex];
         double factor = -2*cblas_ddot(3, rn->current->unit_direction,
                                       1, prsurface->unit_normal, 1);
         cblas_daxpy(3, factor, prsurface->unit_normal, 1,
                     rn_next->current->unit_direction, 1);
-        
-        // update pointers 
+
+        // update pointers
         rn->down = rn_next;
         return process_vertical_chain(rn_next, pr, num_reflections);
 }
@@ -200,7 +200,7 @@ void print_vector(const double *db)
 {
         int ctr;
         for(ctr = 0; ctr < 3; ctr++) {
-                fprintf(stderr, "%lf ", *(db + ctr)); 
+                fprintf(stderr, "%lf ", *(db + ctr));
         }
         fprintf(stderr, "\n");
 }
@@ -243,18 +243,18 @@ void print_ribbonnode(const struct ribbon_node *rn)
         for(ctr = 0; ctr < 3; ctr++) {
                 fprintf(stderr, "%lf ", rn->current->point[ctr]);
         }
-        
+
         fprintf(stderr, "Unit direction: ");
         for(ctr = 0; ctr < 3; ctr++) {
                 fprintf(stderr, "%lf ",
                         rn->current->unit_direction[ctr]);
         }
-        
+
         fprintf(stderr, "Ending point: ");
         for(ctr = 0; ctr < 3; ctr++) {
                 fprintf(stderr, "%lf ", rn->current->end_pt[ctr]);
         }
-        
+
         fprintf(stderr,
                 "Hit dest: %d, num reflec: %d, Surf index: %d",
                 rn->hit_destination_patch,
@@ -265,7 +265,7 @@ void print_ribbonnode(const struct ribbon_node *rn)
 int count_segments(const struct ribbon_node *rn)
 {
         int ctr = 0;
-        
+
         while (rn != NULL) {
                 rn = rn->down;
                 ctr++;
@@ -293,11 +293,11 @@ void compute_average_ribbonnode(struct ribbon_node *rn,
         rn->hit_destination_patch = 0;
         rn->num_reflections = 0;
         rn->ctr = 1;
-        
+
         cblas_dcopy(3, node_array[1]->current->point, 1,
                     rn->current->point, 1);
 }
-                                                                     
+
 void invert_spherical_angles(const double *unit_vector, double *phi,
                              double *thet)
 {
@@ -313,12 +313,12 @@ void compute_averaging_coefficients(const double *point,
 {
         gsl_matrix *mat = gsl_matrix_alloc(3, 2);
         gsl_permutation *perm = gsl_permutation_alloc(3);
-        
+
         gsl_vector *x = gsl_vector_alloc(2);
         gsl_vector *b = gsl_vector_alloc(3);
         gsl_vector *tau = gsl_vector_alloc(2);
         gsl_vector *residual = gsl_vector_alloc(3);
-        
+
         int c0, c1;
         for (c0=0; c0<3; c0++) {
                 const struct ribbon_node *node = node_array[0]->down;
@@ -331,14 +331,14 @@ void compute_averaging_coefficients(const double *point,
                                        - node->current->end_pt[c0]);
                 }
         }
-        
+
         gsl_linalg_QR_decomp(mat, tau);
         gsl_linalg_QR_lssolve(mat, tau, b, x, residual);
-        
+
         *(weights) = 1 - gsl_vector_get(x, 0) - gsl_vector_get(x, 1);
         *(weights + 1) = gsl_vector_get(x, 0);
         *(weights + 2) = gsl_vector_get(x, 1);
-        
+
         gsl_matrix_free(mat);
         gsl_permutation_free(perm);
         gsl_vector_free(x);
@@ -357,7 +357,7 @@ struct ribbon_node *refine_ribbonnode(struct ribbon_node **node_array,
         for(ctr=0; ctr<3; ctr++) {
                 node_array_mod[ctr] = node_array[ctr];
         }
-        
+
         return _refine_ribbonnode(node_array_mod, point, rn, false, pr);
 }
 
@@ -369,29 +369,29 @@ static struct ribbon_node *_refine_ribbonnode(struct ribbon_node **node_array,
 {
         // null node array should be called with false otherwise
         // segmentation fault or memory leak will occur!
-        if (null_node_array) destroy_ray_ribbon_vertical_down(node_array[0]); 
-        
+        if (null_node_array) destroy_ray_ribbon_vertical_down(node_array[0]);
+
         if (rn != NULL && isclose(rn, point)) {
                 return rn;
         }
-        
+
         if (rn != NULL && !isclose(rn, point)) {
                 node_array[0] = rn;
                 null_node_array = true;
                 rn = init_ribbonnode();
         }
-        
+
         if (rn == NULL) {
                 rn = init_ribbonnode();
         }
-        
+
         double weights[3];
         const struct ribbon_node **node_array_const =
                 (const struct ribbon_node **) node_array;
         compute_averaging_coefficients(point, node_array_const, weights);
         compute_average_ribbonnode(rn, node_array_const, weights);
         bool has_hit = process_vertical_chain(rn, pr, 3);
-        
+
         if (has_hit) {
                 return _refine_ribbonnode(node_array,
                                           point, rn, null_node_array, pr);
@@ -444,4 +444,3 @@ struct ribbon_node **vertical_strip_for_points(struct ribbon_node **nodearray,
 /*   // look up best practices for documenting */
 /*   // look up best practices for testing */
 /* } */
- 

@@ -13,7 +13,7 @@
 #include <time.h>
 
 
-#define C 299792458 
+#define C 299792458
 #define PI 3.141592654
 
 struct simulation
@@ -27,7 +27,7 @@ struct simulation
         int total_time;
 };
 
-struct spatial_motion_model 
+struct spatial_motion_model
 {
         double velocity[3];
         double position[3];
@@ -55,7 +55,7 @@ struct general_node
         struct spatial_motion_model smm;
         struct transmission_model tm;
         int id;
-}; 
+};
 
 struct transmitter
 {
@@ -89,16 +89,16 @@ struct environment
         struct transmitter *transmitters_array;
         int time;
         struct general_node **node_array;
-        
+
         double complex *unit_power_gaussian_noise;
-        
+
         double frequency;
         double wavelength;
         double delta_time;
         double max_limit;
         double min_limit;
         double boundary_tolerance;
-        int total_time;        
+        int total_time;
 };
 
 struct filereader
@@ -134,4 +134,3 @@ double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 void interaction_scatterer(void *sc, struct transmitter *tx,
                            struct transmitter *out_array, int *number);
 void parse_input(int argc, char *argv[], struct filereader *fr);
-void cross_product(const double *v1, const double *v2, double *v3);

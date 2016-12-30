@@ -1,5 +1,7 @@
 #include "models.h"
 
+static void cross_product(const double *v1, const double *v2, double *v3);
+
 int id()
 {
         static int id = 0;
@@ -8,7 +10,7 @@ int id()
 
 void init_simulation(struct simulation *sim_not_null)
 {
-        sim_not_null->frequency = 60e9; // 60 Ghz 
+        sim_not_null->frequency = 60e9; // 60 Ghz
         sim_not_null->wavelength = C / sim_not_null->frequency;
         sim_not_null->delta_time = 0.1;
         sim_not_null->max_limit = 1000;
@@ -92,12 +94,12 @@ struct perfect_reflector **init_perfect_reflectorarray(int number)
 void init_environment(struct environment *env)
 {
         if (!(env->num_transmitters > 0 && env->num_receivers > 0)
-            || env->total_time < 1) { 
+            || env->total_time < 1) {
                 fprintf(stderr,
                         "Please set non zero tx, rx and total time\n");
                 exit(EXIT_FAILURE);
         }
-        
+
         env->_num_transmitters_ctr = 0;
         env->_num_receivers_ctr = 0;
         env->num_virtual_transmitters = 0;
@@ -122,10 +124,10 @@ void init_environment_malloc(struct environment *env)
 void init_filereader(struct filereader *fr)
 {
         printf("Opening %s for writing \n", fr->output_filename);
-        printf("Opening %s for reading \n", fr->input_filename); 
-        
+        printf("Opening %s for reading \n", fr->input_filename);
+
         fr->infile = fopen(fr->input_filename, "r");
-        fr->outfile = fopen(fr->output_filename, "w");  
+        fr->outfile = fopen(fr->output_filename, "w");
 }
 
 void destroy_environment(struct environment *env)
@@ -162,7 +164,7 @@ double _gaussrand() // http://c-faq.com/lib/gaussian.html
         static double U, V;
         static int phase = 0;
         double Z;
-        
+
         if(phase == 0) {
                 U = (rand() + 1.) / (RAND_MAX + 2.);
                 V = rand() / (RAND_MAX + 1.);
@@ -170,7 +172,7 @@ double _gaussrand() // http://c-faq.com/lib/gaussian.html
         } else {
                 Z = sqrt(-2 * log(U)) * cos(2 * PI * V);
         }
-        
+
         phase = 1 - phase;
         return Z;
 }
@@ -180,7 +182,7 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
 {
         // assume that sc is perfect_reflector
         struct perfect_reflector *pr = (struct perfect_reflector *) sc;
-        
+
         // check if source is on the reflective side
         double pos[3];
         cblas_dcopy(3, tx->gn.smm.position, 1, pos, 1);
@@ -189,10 +191,10 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
                 // facing non reflective side
                 // return after setting number of virtual
                 // sources added to zero
-                *number = 0; 
+                *number = 0;
                 return;
         }
-  
+
         // source is on the reflective side now
         // compute position transformation
         // pos contains difference of tx - center_point
@@ -201,7 +203,7 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
         cblas_dcopy(3, tx->gn.smm.position, 1, reflected_position, 1);
         cblas_daxpy(3, factor0, pr->unit_normal, 1,
                     reflected_position, 1);
-        
+
         // compute velocity transformation
         double reflected_velocity[3];
         double factor1;
@@ -210,14 +212,14 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
                                 pr->unit_normal, 1);
         cblas_daxpy(3, factor1, pr->unit_normal, 1,
                     reflected_velocity, 1);
-  
+
         // compute power attenuation factor
-        
+
         double norm = cblas_dnrm2(3, pos, 1);
         double cosangle = abs(factor0 / (2 * norm));
         double factor2 = pr->length * pr->width * cosangle/
                 (4 * PI * norm * norm);
-        
+
         // add virtual transmitter to the array
         // TODO
         *number = 1;
@@ -227,13 +229,13 @@ void parse_input(int argc, char *argv[], struct filereader *fr)
 {
         strcpy(fr->input_filename, "/tmp/input.txt");
         strcpy(fr->output_filename, "/tmp/output.txt");
-        
+
         struct option long_options[] = {
                 {"input_filename", required_argument, 0, 'i'},
                 {"output_filename", required_argument, 0, 'o'},
                 {0, 0, 0, 0}
         };
-        
+
         int c=0, option_index;
         c = getopt_long(argc, argv, "i:o:",
                         long_options, &option_index);
@@ -256,7 +258,7 @@ void parse_input(int argc, char *argv[], struct filereader *fr)
         }
 }
 
-void cross_product(const double *v1, const double *v2, double *v3)
+static void cross_product(const double *v1, const double *v2, double *v3)
 {
         v3[0] = v1[1] * v2[2] - v1[2] * v2[1];
         v3[1] = v1[2] * v2[0] - v1[0] * v2[2];
