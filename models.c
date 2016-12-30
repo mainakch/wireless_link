@@ -9,7 +9,7 @@ int id()
 void init_simulation(struct simulation *sim_not_null)
 {
         sim_not_null->frequency = 60e9; // 60 Ghz 
-        sim_not_null->wavelength = C/sim_not_null->frequency;
+        sim_not_null->wavelength = C / sim_not_null->frequency;
         sim_not_null->delta_time = 0.1;
         sim_not_null->max_limit = 1000;
         sim_not_null->min_limit = 0;
@@ -67,12 +67,13 @@ struct perfect_reflector *init_perfect_reflector(const double *normal,
                                          const double *length_normal,
                                          double length, double width)
 {
-        struct perfect_reflector *pr = calloc(1, sizeof(struct perfect_reflector));
+        struct perfect_reflector *pr =
+                calloc(1, sizeof(struct perfect_reflector));
         double norm = cblas_dnrm2(3, normal, 1);
-        cblas_daxpy(3, 1/norm, normal, 1, pr->unit_normal, 1);
+        cblas_daxpy(3, 1 / norm, normal, 1, pr->unit_normal, 1);
         cblas_dcopy(3, center_point, 1, pr->center_point, 1);
         norm = cblas_dnrm2(3, length_normal, 1);
-        cblas_daxpy(3, 1/norm, length_normal, 1,
+        cblas_daxpy(3, 1 / norm, length_normal, 1,
                     pr->unit_length_normal, 1);
         cross_product(pr->unit_length_normal,
                       pr->unit_normal, pr->unit_width_normal);
@@ -171,7 +172,6 @@ double _gaussrand() // http://c-faq.com/lib/gaussian.html
         }
         
         phase = 1 - phase;
-        
         return Z;
 }
 
@@ -196,7 +196,7 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
         // source is on the reflective side now
         // compute position transformation
         // pos contains difference of tx - center_point
-        double factor0 = -2*cblas_ddot(3, pos, 1, pr->unit_normal, 1);
+        double factor0 = -2 * cblas_ddot(3, pos, 1, pr->unit_normal, 1);
         double reflected_position[3];
         cblas_dcopy(3, tx->gn.smm.position, 1, reflected_position, 1);
         cblas_daxpy(3, factor0, pr->unit_normal, 1,
@@ -206,7 +206,7 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
         double reflected_velocity[3];
         double factor1;
         cblas_dcopy(3, tx->gn.smm.velocity, 1, reflected_velocity, 1);
-        factor1 = -2*cblas_ddot(3, tx->gn.smm.velocity, 1,
+        factor1 = -2 * cblas_ddot(3, tx->gn.smm.velocity, 1,
                                 pr->unit_normal, 1);
         cblas_daxpy(3, factor1, pr->unit_normal, 1,
                     reflected_velocity, 1);
@@ -214,9 +214,9 @@ void interaction_scatterer(void *sc, struct transmitter *tx,
         // compute power attenuation factor
         
         double norm = cblas_dnrm2(3, pos, 1);
-        double cosangle = abs(factor0/(2*norm));
-        double factor2 = pr->length*pr->width*cosangle/
-                (4*PI*norm*norm);
+        double cosangle = abs(factor0 / (2 * norm));
+        double factor2 = pr->length * pr->width * cosangle/
+                (4 * PI * norm * norm);
         
         // add virtual transmitter to the array
         // TODO
@@ -258,7 +258,7 @@ void parse_input(int argc, char *argv[], struct filereader *fr)
 
 void cross_product(const double *v1, const double *v2, double *v3)
 {
-        v3[0] = v1[1]*v2[2] - v1[2]*v2[1];
-        v3[1] = v1[2]*v2[0] - v1[0]*v2[2];
-        v3[2] = v1[0]*v2[1] - v1[1]*v2[0];
+        v3[0] = v1[1] * v2[2] - v1[2] * v2[1];
+        v3[1] = v1[2] * v2[0] - v1[0] * v2[2];
+        v3[2] = v1[0] * v2[1] - v1[1] * v2[0];
 }
