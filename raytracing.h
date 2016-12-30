@@ -2,16 +2,14 @@
 
 #define MAX_SURFACES 10
 
-struct half_infinite_ray
-{
+struct half_infinite_ray {
         double point[3];
         double unit_direction[3];
         double end_pt[3];
 
 };
 
-struct ribbon_node
-{
+struct ribbon_node {
         struct half_infinite_ray *current;
         struct ribbon_node *down;
         bool hit_destination_patch;
@@ -20,20 +18,17 @@ struct ribbon_node
         int surface_index;
 };
 
-struct ray_ribbon
-{
+struct ray_ribbon {
         struct ribbon_node *head;
 };
 
-struct ray_ribbon_array
-{
+struct ray_ribbon_array {
         struct ray_ribbon **ribbons;
         int max_len;
         int current_len;
 };
 
-struct path
-{
+struct path {
         struct ray_ribbon *rb;
         double doppler;
         double delay;

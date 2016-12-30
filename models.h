@@ -16,8 +16,7 @@
 #define C 299792458
 #define PI 3.141592654
 
-struct simulation
-{
+struct simulation {
         double frequency;
         double wavelength;
         double delta_time;
@@ -27,8 +26,7 @@ struct simulation
         int total_time;
 };
 
-struct spatial_motion_model
-{
+struct spatial_motion_model {
         double velocity[3];
         double position[3];
         double acceleration_factor;
@@ -36,8 +34,7 @@ struct spatial_motion_model
         bool is_static;
 };
 
-struct transmission_model
-{
+struct transmission_model {
         double power_in_dBm;
         double start_time;
         double end_time;
@@ -45,32 +42,27 @@ struct transmission_model
         double doppler_offset;
 };
 
-struct propagation_model
-{
+struct propagation_model {
         double distance;
 };
 
-struct general_node
-{
+struct general_node {
         struct spatial_motion_model smm;
         struct transmission_model tm;
         int id;
 };
 
-struct transmitter
-{
+struct transmitter {
         struct general_node gn;
         bool is_real_transmitter;
 };
 
-struct receiver
-{
+struct receiver {
         struct general_node gn;
         double recv_noise_power;
 };
 
-struct perfect_reflector
-{
+struct perfect_reflector {
         double unit_normal[3];
         double unit_length_normal[3];
         double unit_width_normal[3];
@@ -78,8 +70,7 @@ struct perfect_reflector
         double length, width;
 };
 
-struct environment
-{
+struct environment {
         int _num_receivers_ctr;
         int _num_transmitters_ctr;
         int num_receivers;
@@ -101,8 +92,7 @@ struct environment
         int total_time;
 };
 
-struct filereader
-{
+struct filereader {
         FILE *infile;
         FILE *outfile;
         // filenames longer than 1000 will be rejected
