@@ -2,77 +2,77 @@
 
 #define MAX_SURFACES 10
 
-typedef struct
+struct half_infinite_ray
 {
         double point[3];
         double unit_direction[3];
         double end_pt[3];
         
-} Halfinfiniteray;
+};
 
-typedef struct Ribbonnode_t
+struct ribbon_node
 {
-        Halfinfiniteray * current;
-        struct Ribbonnode_t * right;
-        struct Ribbonnode_t * down;
+        struct half_infinite_ray *current;
+        struct ribbon_node *right;
+        struct ribbon_node *down;
         bool hit_destination_patch;
         int num_reflections;
         int ctr;
         int surface_index;
-} Ribbonnode;
+};
 
-typedef struct
+struct ray_ribbon
 {
-        Ribbonnode * head;
-} Rayribbon;
+        struct ribbon_node *head;
+};
 
-typedef struct
+struct path
 {
-        Rayribbon * rb;
+        struct ray_ribbon *rb;
         double doppler;
         double delay;
         double gain;
         double phase;
-} Path;
+};
 
-void init_ray_ribbon(Transmitter * tx, Receiver * rx,
-                     const Perfectreflector ** patcharray,
-                     Rayribbon * rb, int num_segments,
+void init_ray_ribbon(struct transmitter *tx, struct receiver *rx,
+                     const struct perfect_reflector **patcharray,
+                     struct ray_ribbon *rb, int num_segments,
                      int num_reflections);
-Ribbonnode * init_ribbonnode();
-void destroy_ray_ribbon(Rayribbon * rb);
-void unlink_ray_ribbon_node(Rayribbon * rb, Ribbonnode * rn);
+struct ribbon_node *init_ribbonnode();
+void destroy_ray_ribbon(struct ray_ribbon *rb);
+void unlink_ray_ribbon_node(struct ray_ribbon *rb, struct ribbon_node *rn);
 //assume that each path hits destination patch only once
-void destroy_ray_ribbon_vertical_down(Ribbonnode * rb); 
+void destroy_ray_ribbon_vertical_down(struct ribbon_node *rb); 
 
-complex double compute_intersection(Halfinfiniteray * hr,
-                                    const Perfectreflector * pr);
-bool process_vertical_chain(Ribbonnode * rn,
-                            const Perfectreflector ** pr,
+complex double compute_intersection(struct half_infinite_ray *hr,
+                                    const struct perfect_reflector *pr);
+bool process_vertical_chain(struct ribbon_node *rn,
+                            const struct perfect_reflector **pr,
                             int num_reflections);
-void print_vector(const double * db);
-void print_rayribbon(const Rayribbon * rb);
-void print_vertical_strip(const Ribbonnode * rn);
-void print_ribbonnode(const Ribbonnode * rn);
-int count_segments(const Ribbonnode * rn);
-void compute_average_ribbonnode(Ribbonnode * rn,
-                                const Ribbonnode ** node_array,
-                                double * weights);
-void invert_spherical_angles(const double * unit_vector, double * phi,
-                             double * theta);
-void compute_averaging_coefficients(const double * point,
-                                    const Ribbonnode ** node_array,
-                                    double * weights);
-Ribbonnode * refine_ribbonnode(Ribbonnode ** node_array,
-                               const double * point,
-                               Ribbonnode * rn,
-                               const Perfectreflector ** pr);
-bool isclose(const Ribbonnode * rn, const double * point);
-long type_vertical_strip(const Ribbonnode * rn);
-Ribbonnode ** vertical_strip_for_points(Ribbonnode ** nodearray,
-                                        const double ** points,
+void print_vector(const double *db);
+void print_rayribbon(const struct ray_ribbon *rb);
+void print_vertical_strip(const struct ribbon_node *rn);
+void print_ribbonnode(const struct ribbon_node *rn);
+int count_segments(const struct ribbon_node *rn);
+void compute_average_ribbonnode(struct ribbon_node *rn,
+                                const struct ribbon_node **node_array,
+                                double *weights);
+void invert_spherical_angles(const double *unit_vector, double *phi,
+                             double *theta);
+void compute_averaging_coefficients(const double *point,
+                                    const struct ribbon_node **node_array,
+                                    double *weights);
+struct ribbon_node *refine_ribbonnode(struct ribbon_node **node_array,
+                               const double *point,
+                               struct ribbon_node *rn,
+                               const struct perfect_reflector **pr);
+bool isclose(const struct ribbon_node *rn, const double *point);
+long type_vertical_strip(const struct ribbon_node *rn);
+struct ribbon_node **vertical_strip_for_points(struct ribbon_node **nodearray,
+                                        const double **points,
                                        int num_points,
-                                        const Perfectreflector ** pr);
-Path * generate_all_paths(Transmitter * tn, Receiver * rxarray,
-                          Perfectreflector * pr);
+                                        const struct perfect_reflector **pr);
+struct path *generate_all_paths(struct transmitter *tn, struct receiver *rxarray,
+                          struct perfect_reflector *pr);
                           
