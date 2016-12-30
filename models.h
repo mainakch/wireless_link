@@ -18,98 +18,98 @@
 
 typedef struct 
 {
-	double frequency;
-	double wavelength;
-	double delta_time;
-	double max_limit;
-	double min_limit;
-	double boundary_tolerance;
-	int total_time;
-	
+        double frequency;
+        double wavelength;
+        double delta_time;
+        double max_limit;
+        double min_limit;
+        double boundary_tolerance;
+        int total_time;
+        
 } Simulation;
 
 typedef struct 
 {
-	double velocity[3];
-	double position[3];
-	double acceleration_factor;
-	double distance_from_actual_source;
-	bool is_static;
+        double velocity[3];
+        double position[3];
+        double acceleration_factor;
+        double distance_from_actual_source;
+        bool is_static;
 } SpatialMotionModel;
 
 typedef struct
 {
-	double power_in_dBm;
-	double start_time;
-	double end_time;
-	double initial_phase;
-	double doppler_offset;
+        double power_in_dBm;
+        double start_time;
+        double end_time;
+        double initial_phase;
+        double doppler_offset;
 } TransmissionModel;
 
 typedef struct
 {
-	double distance;
+        double distance;
 } PropagationModel;
 
 typedef struct
 {
-	SpatialMotionModel smm;
-	TransmissionModel tm;
-	int id;
+        SpatialMotionModel smm;
+        TransmissionModel tm;
+        int id;
 } GeneralNode;
 
 typedef struct
 {
-	GeneralNode gn;
-	bool is_real_transmitter;
+        GeneralNode gn;
+        bool is_real_transmitter;
 }  Transmitter;
 
 typedef struct
 {
-	GeneralNode gn;
-	double recv_noise_power;
+        GeneralNode gn;
+        double recv_noise_power;
 }  Receiver;
 
 typedef struct
 {
-	double unit_normal[3];
-	double unit_length_normal[3];
-	double unit_width_normal[3];
-	double center_point[3];
-	double length, width;
+        double unit_normal[3];
+        double unit_length_normal[3];
+        double unit_width_normal[3];
+        double center_point[3];
+        double length, width;
 } Perfectreflector;
 
 typedef struct
 {
-	int _num_receivers_ctr;
-	int _num_transmitters_ctr;
-	int num_receivers;
-	int num_transmitters;
-	int num_virtual_transmitters;
-	Receiver * receivers_array;
-	Transmitter * transmitters_array;
-	int time;
-	GeneralNode ** node_array;
-	
-	double complex * unit_power_gaussian_noise;
-	
-	double frequency;
-	double wavelength;
-	double delta_time;
-	double max_limit;
-	double min_limit;
-	double boundary_tolerance;
-	int total_time;
-	
+        int _num_receivers_ctr;
+        int _num_transmitters_ctr;
+        int num_receivers;
+        int num_transmitters;
+        int num_virtual_transmitters;
+        Receiver * receivers_array;
+        Transmitter * transmitters_array;
+        int time;
+        GeneralNode ** node_array;
+        
+        double complex * unit_power_gaussian_noise;
+        
+        double frequency;
+        double wavelength;
+        double delta_time;
+        double max_limit;
+        double min_limit;
+        double boundary_tolerance;
+        int total_time;
+        
 } Environment;
 
 typedef struct
 {
-	FILE * infile;
-	FILE * outfile;
-	// filenames longer than 1000 will be rejected
-	char input_filename[1000];
-	char output_filename[1000];
+        FILE * infile;
+        FILE * outfile;
+        // filenames longer than 1000 will be rejected
+        char input_filename[1000];
+        char output_filename[1000];
 } Filereader;
 
 int id();
@@ -121,9 +121,9 @@ void init_general_node(GeneralNode * gn);
 void init_transmitter(Transmitter * tn);
 void init_receiver(Receiver * rc);
 Perfectreflector * init_perfectreflector(const double * normal,
-					 const double * center_point,
-					 const double * length_normal,
-					 double length, double width);
+                                         const double * center_point,
+                                         const double * length_normal,
+                                         double length, double width);
 Perfectreflector ** init_perfectreflectorarray(int number);
 void init_environment(Environment * env);
 void init_environment_malloc(Environment * env);
@@ -134,6 +134,6 @@ void destroy_perfectreflector(Perfectreflector * pr);
 void destroy_perfectreflectorarray(Perfectreflector ** pr_begin);
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 void interaction_scatterer(void * sc, Transmitter * tx,
-			   Transmitter * out_array, int * number);
+                           Transmitter * out_array, int * number);
 void parse_input(int argc, char * argv[], Filereader * fr);
 void cross_product(const double * v1, const double * v2, double * v3);
