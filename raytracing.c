@@ -1,12 +1,14 @@
 #include "raytracing.h"
 
+static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, const double * point, Ribbonnode * rn, bool null_node_array, const Perfectreflector ** pr);
+
 int counter()
 {
   static int ctr = 0;
   return ctr++;
 }
 
-void init_ray_ribbon(Transmitter * tx, Receiver * rx, Perfectreflector ** patcharray,
+void init_ray_ribbon(Transmitter * tx, Receiver * rx, const Perfectreflector ** patcharray,
 		     Rayribbon * rb, int num_segments, int num_reflections)
 {
   if (rb == NULL)
@@ -17,8 +19,6 @@ void init_ray_ribbon(Transmitter * tx, Receiver * rx, Perfectreflector ** patcha
 
   double phi, theta;
   Ribbonnode *rnprev = 0;
-  int ctr;
-  
   for (phi=0; phi<2*PI; phi += 2*PI/num_segments)
   {
     for (theta=-PI/2; theta<PI/2; theta += PI/num_segments)
@@ -92,7 +92,7 @@ void destroy_ray_ribbon_vertical_down(Ribbonnode * rn)
   destroy_ray_ribbon_vertical_down(rndown);
 } 
 
-complex double compute_intersection(Halfinfiniteray * hr, Perfectreflector * pr)
+complex double compute_intersection(Halfinfiniteray * hr, const Perfectreflector * pr)
 {
   double t, sgn;
   double diff[3];
@@ -133,13 +133,13 @@ complex double compute_intersection(Halfinfiniteray * hr, Perfectreflector * pr)
   return t + I*sgn; // if sgn positive then ray is blocked
 }
 
-bool process_vertical_chain(Ribbonnode * rn, Perfectreflector ** pr, int num_reflections)
+bool process_vertical_chain(Ribbonnode * rn, const Perfectreflector ** pr, int num_reflections)
 {
   // this function computes whether a ray can hit the destination after a max num_reflections
   int ctr=0, ctrindex=-1, num_reflectors=0;
   double tmin = INFINITY, sgn;
 
-  Perfectreflector * prsurf = *(pr + ctr);
+  const Perfectreflector * prsurf = *(pr + ctr);
   while(prsurf != NULL)
   {
     complex double dbl = compute_intersection(rn->current, prsurf);
@@ -148,9 +148,6 @@ bool process_vertical_chain(Ribbonnode * rn, Perfectreflector ** pr, int num_ref
       tmin = creal(dbl);
       sgn = cimag(dbl);
       ctrindex = ctr;
-      /* fprintf(stderr, "For ribbonnode: "); */
-      /* print_ribbonnode(rn); */
-      /* fprintf(stderr, "%lf, %lf, Index: %d \n", creal(dbl), cimag(dbl), ctrindex); */
     }
     ctr++;
     prsurf = *(pr+ctr);
@@ -190,7 +187,7 @@ bool process_vertical_chain(Ribbonnode * rn, Perfectreflector ** pr, int num_ref
 
   // next update direction
   cblas_dcopy(3, rn->current->unit_direction, 1, rn_next->current->unit_direction, 1);
-  Perfectreflector * prsurface = pr[ctrindex];
+  const Perfectreflector * prsurface = pr[ctrindex]; 
   double factor = -2*cblas_ddot(3, rn->current->unit_direction, 1, prsurface->unit_normal, 1);
   cblas_daxpy(3, factor, prsurface->unit_normal, 1, rn_next->current->unit_direction, 1);
 
@@ -209,7 +206,7 @@ void print_vector(const double * db)
   fprintf(stderr, "\n");
 }
 
-void print_rayribbon(Rayribbon * rb)
+void print_rayribbon(const Rayribbon * rb)
 {
   Ribbonnode * rn = rb->head;
   int ctr=0, ctr1;
@@ -235,7 +232,7 @@ void print_rayribbon(Rayribbon * rb)
   }
 }
 
-void print_vertical_strip(Ribbonnode * rn)
+void print_vertical_strip(const Ribbonnode * rn)
 {
   int ctr=0;
   while (rn != NULL)
@@ -246,7 +243,7 @@ void print_vertical_strip(Ribbonnode * rn)
   }
 }
 
-void print_ribbonnode(Ribbonnode * rn)
+void print_ribbonnode(const Ribbonnode * rn)
 {
   if (rn == NULL) return;
   fprintf(stderr, "Starting point: ");
@@ -273,7 +270,7 @@ void print_ribbonnode(Ribbonnode * rn)
   fprintf(stderr, "\n");
 }
 
-int count_segments(Ribbonnode * rn)
+int count_segments(const Ribbonnode * rn)
 {
   int ctr=0;
 
@@ -285,7 +282,7 @@ int count_segments(Ribbonnode * rn)
   return ctr;
 }
 
-void compute_average_ribbonnode(Ribbonnode * rn, Ribbonnode ** node_array, double * weights)
+void compute_average_ribbonnode(Ribbonnode * rn, const Ribbonnode ** node_array, double * weights)
 {
   double thet, phi;
   double thetaav=0, phiav=0;
@@ -312,14 +309,14 @@ void compute_average_ribbonnode(Ribbonnode * rn, Ribbonnode ** node_array, doubl
   cblas_dcopy(3, node_array[1]->current->point, 1, rn->current->point, 1);
 }
 
-void invert_spherical_angles(double * unit_vector, double * phi, double * thet)
+void invert_spherical_angles(const double * unit_vector, double * phi, double * thet)
 {
   * thet = atan(unit_vector[2]/unit_vector[1]);
   * phi = acos(unit_vector[0]);
   if ( sin(*phi)*sin(*thet)/unit_vector[2] < 0 ) *phi = 2*PI- (*phi);
 }
 
-void compute_averaging_coefficients(double * point, Ribbonnode ** node_array, double * weights)
+void compute_averaging_coefficients(const double * point, const Ribbonnode ** node_array, double * weights)
 {
   gsl_matrix * mat = gsl_matrix_alloc(3, 2);
   gsl_permutation * perm = gsl_permutation_alloc(3);
@@ -357,8 +354,8 @@ void compute_averaging_coefficients(double * point, Ribbonnode ** node_array, do
   gsl_vector_free(residual);
 }
 
-Ribbonnode * refine_ribbonnode(Ribbonnode ** node_array, double * point, Ribbonnode * rn,
-			       Perfectreflector ** pr)
+Ribbonnode * refine_ribbonnode(Ribbonnode ** node_array, const double * point, Ribbonnode * rn,
+			       const Perfectreflector ** pr)
 {
   Ribbonnode * node_array_mod[3];
   int ctr;
@@ -370,11 +367,9 @@ Ribbonnode * refine_ribbonnode(Ribbonnode ** node_array, double * point, Ribbonn
   return _refine_ribbonnode_helper(node_array_mod, point, rn, false, pr);
 }
 
-static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, double * point, Ribbonnode * rn, bool null_node_array,
-				       Perfectreflector ** pr)
+static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, const double * point, Ribbonnode * rn, bool null_node_array, const Perfectreflector ** pr)
 {
   // null node array should be called with false otherwise segmentation fault or memory leak will occur!
-
   if (null_node_array) destroy_ray_ribbon_vertical_down(node_array[0]); 
 
   if (rn != NULL && isclose(rn, point))
@@ -395,8 +390,9 @@ static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, double *
   }
   
   double weights[3];
-  compute_averaging_coefficients(point, node_array, weights);
-  compute_average_ribbonnode(rn, node_array, weights);
+  const Ribbonnode ** node_array_const = (const Ribbonnode **) node_array;
+  compute_averaging_coefficients(point, node_array_const, weights);
+  compute_average_ribbonnode(rn, node_array_const, weights);
   bool has_hit = process_vertical_chain(rn, pr, 3);
 
   if (has_hit)
@@ -409,7 +405,7 @@ static Ribbonnode * _refine_ribbonnode_helper(Ribbonnode ** node_array, double *
   }
 }
 
-bool isclose(Ribbonnode * rn, double * point)
+bool isclose(const Ribbonnode * rn, const double * point)
 {
   double diff[3];
   while (rn->down != NULL)
@@ -422,7 +418,7 @@ bool isclose(Ribbonnode * rn, double * point)
   return false;
 }
 
-long type_vertical_strip(Ribbonnode * rn)
+long type_vertical_strip(const Ribbonnode * rn)
 {
   int ctr=0;
   while (rn != NULL)
@@ -433,8 +429,8 @@ long type_vertical_strip(Ribbonnode * rn)
   return ctr;
 }
 
-Ribbonnode ** vertical_strip_for_points(Ribbonnode ** nodearray, double ** points,
-					int num_points, Perfectreflector ** pr)
+Ribbonnode ** vertical_strip_for_points(Ribbonnode ** nodearray, const double ** points,
+					int num_points, const Perfectreflector ** pr)
 {
   int ctr=0;
   Ribbonnode ** vertical_strips = malloc(num_points*sizeof(Ribbonnode *));
@@ -445,9 +441,10 @@ Ribbonnode ** vertical_strip_for_points(Ribbonnode ** nodearray, double ** point
   return vertical_strips;
 }
 
-Path * generate_all_paths(Transmitter * tn, Receiver * rxarray, Perfectreflector * pr)
-{
-  // make all the transmitter, receiver and reflector arrays null terminated; that way code is simplified
-  // look up best practices for documenting
-  // look up best practices for testing
-}
+/* Path * generate_all_paths(Transmitter * tn, Receiver * rxarray, Perfectreflector * pr) */
+/* { */
+/*   // make all the transmitter, receiver and reflector arrays null terminated; that way code is simplified */
+/*   // look up best practices for documenting */
+/*   // look up best practices for testing */
+/* } */
+ 
