@@ -12,40 +12,38 @@ int counter()
         return ctr++;
 }
 
-void populate_ray_ribbon_array(struct transmitter *tx, struct receiver *rx,
-                               const struct perfect_reflector **ref_arr,
-                               struct ray_ribbon_array *rarr,
-                               int num_divs, int num_ref)
+struct set_of_types *init_set_of_types(int number)
 {
-        double phi, theta;
-        struct ribbon_node *rnprev = 0;
-        for (phi = 0; phi < 2 * PI; phi += 2 * PI / num_divs) {
-                for (theta = -PI / 2; theta < PI / 2; theta += PI / num_divs) {
-                        struct ribbon_node *rn = init_ribbonnode();
-                        cblas_dcopy(3, tx->gn.smm.position, 1,
-                                    rn->current->point, 1);
-                        double direction[3] = {cos(phi),
-                                               sin(phi) * cos(theta),
-                                               sin(phi) * sin(theta)};
-                        cblas_dcopy(3, direction, 1,
-                                    rn->current->unit_direction, 1);
+        struct set_of_types *st = malloc(sizeof(struct set_of_types));
+        st->types = malloc(number * sizeof(long));
 
-                        bool hit_des = process_vertical_chain(rn,
-                                                              ref_arr,
-                                                              num_ref);
-
-                        if (hit_des) {
-                                struct ray_ribbon *rb =
-                                        malloc(sizeof(struct ray_ribbon));
-                                rb->head = rn;
-                                add_ray_ribbon(rarr, rb);
-
-                        } else {
-                                destroy_ray_ribbon_vertical_down(rn);
-                        }
-
-                }
+        // initialize to -1
+        int ctr = 0;
+        while (ctr < number) {
+                *(st->types + ctr) = -1;
+                ctr++;
         }
+        return st;
+}
+
+void destroy_set_of_types(struct set_of_types *st)
+{
+        free(st->types);
+        free(st);
+}
+
+void add_entry(long number, struct set_of_types *st)
+{
+        int ctr = 0;
+        while (ctr < NUM_TYPES && *(st->types + ctr) >= 0) {
+                if (*(st->types + ctr) == number) {
+                        return;
+                }
+                ctr++;
+        }
+
+        // does not check for max length
+        *(st->types + ctr) = number;
 }
 
 void init_ray_ribbon_array(int number, struct ray_ribbon_array *rarr)
@@ -53,6 +51,87 @@ void init_ray_ribbon_array(int number, struct ray_ribbon_array *rarr)
         rarr->ribbons = calloc(number, sizeof(struct ray_ribbon *));
         rarr->max_len = number;
         rarr->current_len = 0;
+}
+
+void populate_ray_ribbon_array(struct transmitter *tx, struct receiver *rx,
+                               const struct perfect_reflector **ref_arr,
+                               struct ray_ribbon_array *rarr,
+                               int num_divs, int num_ref)
+{
+        populate_ray_ribbon_array_long(tx, rx, ref_arr, rarr, num_ref,
+                                       -PI / 2, PI / 2, PI / num_divs,
+                                       0, 2 * PI, 2 * PI / num_divs);
+}
+
+void populate_ray_ribbon_array_long(struct transmitter *tx, struct receiver *rx,
+                                    const struct perfect_reflector **ref_arr,
+                                    struct ray_ribbon_array *rarr,
+                                    int num_ref,
+                                    const double phi_start,
+                                    const double phi_end,
+                                    const double phi_delta,
+                                    const double thet_start,
+                                    const double thet_end,
+                                    const double thet_delt)
+{
+        int num_points = floor((phi_end - phi_start) / phi_delta) *
+                floor((thet_end - thet_start) / thet_delt);
+        complex double *arr = malloc(num_points * sizeof(complex double));
+        int ctr = 0;
+
+        double phi, theta;
+        for (phi = phi_start; phi < phi_end; phi += phi_delta) {
+                for (theta = thet_start; theta < thet_end; theta += thet_delt) {
+                        *(arr + ctr) = phi + I * theta;
+                        ctr++;
+                }
+        }
+        populate_ray_ribbon_array_full(tx, ref_arr, num_ref, num_points,
+                                       arr, rarr);
+        free(arr);
+}
+
+void populate_ray_ribbon_array_full(const struct transmitter *tx,
+                                    const struct perfect_reflector **ref_arr,
+                                    int num_ref, int num_points,
+                                    const complex double *angles,
+                                    struct ray_ribbon_array *rarr)
+{
+        int ctr = 0;
+        double phi, theta;
+
+        while (ctr < num_points) {
+                phi = creal(*(angles + ctr));
+                theta = cimag(*(angles + ctr));
+                struct ribbon_node *rn = init_ribbonnode();
+                cblas_dcopy(3, tx->gn.smm.position, 1,
+                            rn->current->point, 1);
+                double direction[3] = {cos(phi),
+                                       sin(phi) * cos(theta),
+                                       sin(phi) * sin(theta)};
+                cblas_dcopy(3, direction, 1,
+                            rn->current->unit_direction, 1);
+
+                bool hit_des = process_vertical_chain(rn,
+                                                      ref_arr,
+                                                      num_ref);
+
+                if (hit_des) {
+                        struct ray_ribbon *rb = init_ray_ribbon(rn);
+                                add_ray_ribbon(rarr, rb);
+
+                } else {
+                        destroy_chain_of_ribbon_nodes(rn);
+                }
+                ctr++;
+        }
+}
+
+struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn)
+{
+        struct ray_ribbon *rb = malloc(sizeof(struct ray_ribbon));
+        rb->head = rn;
+        return rb;
 }
 
 struct ribbon_node *init_ribbonnode()
@@ -67,29 +146,37 @@ struct ribbon_node *init_ribbonnode()
         return rn;
 }
 
-void destroy_ray_ribbon(struct ray_ribbon *rb)
+void destroy_ray_ribbon_nodes(struct ray_ribbon *rb)
 {
-        destroy_ray_ribbon_vertical_down(rb->head);
+        struct ribbon_node *rn = rb->head;
+        while (rn != NULL) {
+                if (rn->current != NULL) free(rn->current);
+                struct ribbon_node *rndown = rn->down;
+                free(rn);
+                rn = rndown;
+        }
+        rb->head = 0;
 }
 
 void destroy_ray_ribbon_array(struct ray_ribbon_array *array)
 {
         int ctr = 0;
         while (*(array->ribbons + ctr) != NULL) {
-                destroy_ray_ribbon(*(array->ribbons + ctr));
+                destroy_ray_ribbon_nodes(*(array->ribbons + ctr));
                 free(*(array->ribbons + ctr));
                 ctr++;
         }
         free(array->ribbons);
+        free(array);
 }
 
-void destroy_ray_ribbon_vertical_down(struct ribbon_node *rn)
+void destroy_chain_of_ribbon_nodes(struct ribbon_node *rn)
 {
         if (rn == NULL) return;
         if (rn->current != NULL) free(rn->current);
         struct ribbon_node *rndown = rn->down;
         free(rn);
-        destroy_ray_ribbon_vertical_down(rndown);
+        destroy_chain_of_ribbon_nodes(rndown);
 }
 
 bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb)
@@ -103,6 +190,7 @@ bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb)
 
         *(array->ribbons + array->current_len) = rb;
         array->current_len += 1;
+        return true;
 }
 
 complex double compute_intersection(struct half_infinite_ray *hr,
@@ -131,8 +219,8 @@ complex double compute_intersection(struct half_infinite_ray *hr,
                 double widtht = cblas_ddot(3, diff, 1,
                                            pr->unit_width_normal, 1);
 
-                if (abs(lengtht) > pr->length / 2 ||
-                    abs(widtht) > pr->width / 2 ||
+                if (fabs(lengtht) > pr->length / 2 ||
+                    fabs(widtht) > pr->width / 2 ||
                     t < 0) {
                         t = INFINITY;
                 }
@@ -295,19 +383,24 @@ int count_segments(const struct ribbon_node *rn)
 }
 
 void compute_average_ribbonnode(struct ribbon_node *rn,
-                                const struct ribbon_node **node_array,
+                                const struct ray_ribbon_array *rba,
                                 double *weights)
 {
         double thet, phi;
         double thetaav = 0, phiav = 0;
         int ctr = 0;
+        struct ribbon_node *node;
         for (; ctr < 3; ctr++) {
-                const struct ribbon_node *node = node_array[ctr];
+                node = (*(rba->ribbons + ctr))->head;
                 invert_spherical_angles(node->current->unit_direction,
                                         &phi, &thet);
+                fprintf(stderr, "Unit direction phi %lf, thet %lf\n",
+                        phi, thet);
                 thetaav += *(weights+ctr) *thet;
                 phiav += *(weights+ctr) *phi;
         }
+        fprintf(stderr, "Setting unit direction phi %lf, thet %lf\n",
+                phiav, thetaav);
         rn->current->unit_direction[0] = cos(phiav);
         rn->current->unit_direction[1] = sin(phiav)*cos(thetaav);
         rn->current->unit_direction[2] = sin(phiav)*sin(thetaav);
@@ -315,7 +408,7 @@ void compute_average_ribbonnode(struct ribbon_node *rn,
         rn->num_reflections = 0;
         rn->ctr = 1;
 
-        cblas_dcopy(3, node_array[1]->current->point, 1,
+        cblas_dcopy(3, node->current->point, 1,
                     rn->current->point, 1);
 }
 
@@ -329,12 +422,11 @@ void invert_spherical_angles(const double *unit_vector, double *phi,
 }
 
 void compute_averaging_coefficients(const double *point,
-                                    const struct ribbon_node **node_array,
+                                    const struct ray_ribbon_array *rba,
                                     double *weights)
 {
         gsl_matrix *mat = gsl_matrix_alloc(3, 2);
         gsl_permutation *perm = gsl_permutation_alloc(3);
-
         gsl_vector *x = gsl_vector_alloc(2);
         gsl_vector *b = gsl_vector_alloc(3);
         gsl_vector *tau = gsl_vector_alloc(2);
@@ -342,11 +434,13 @@ void compute_averaging_coefficients(const double *point,
 
         int c0, c1;
         for (c0=0; c0<3; c0++) {
-                const struct ribbon_node *node = node_array[0]->down;
-                gsl_vector_set(b, c0, *(point+c0)
+                const struct ribbon_node *node =
+                        get_last_ribbon_node(*(rba->ribbons));
+                gsl_vector_set(b, c0, *(point + c0)
                                - node->current->end_pt[c0]);
                 for (c1=0; c1<2; c1++) {
-                        const struct ribbon_node *nodeset = node_array[c1+1]->down;
+                        const struct ribbon_node *nodeset =
+                                get_last_ribbon_node(*(rba->ribbons + c1 + 1));
                         gsl_matrix_set(mat, c0, c1,
                                        nodeset->current->end_pt[c0]
                                        - node->current->end_pt[c0]);
@@ -368,57 +462,76 @@ void compute_averaging_coefficients(const double *point,
         gsl_vector_free(residual);
 }
 
-struct ribbon_node *refine_ribbonnode(struct ribbon_node **node_array,
-                                      const double *point,
-                                      struct ribbon_node *rn,
-                                      const struct perfect_reflector **pr)
+struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
+                                                 const struct
+                                                 perfect_reflector **ref_arr,
+                                                 int num_ref,
+                                                 const struct ray_ribbon *rb)
 {
-        struct ribbon_node *node_array_mod[3];
-        int ctr;
-        for(ctr=0; ctr<3; ctr++) {
-                node_array_mod[ctr] = node_array[ctr];
-        }
+        double phi, theta;
+        invert_spherical_angles(rb->head->current->unit_direction,
+                                &phi, &theta);
+        struct ray_ribbon_array *rarr = malloc(sizeof(struct ray_ribbon_array));
+        init_ray_ribbon_array(4, rarr);
 
-        return _refine_ribbonnode(node_array_mod, point, rn, false, pr);
+        complex double *angles = malloc(3 * sizeof(complex double));
+        *angles = (phi - 0.00059) + I * (theta + 0.00057);
+        *(angles + 1) = phi + 0.0004 + I * (theta + 0.0009);
+        *(angles + 2) = phi + 0.00039 + I * (theta + 0.00011);
+
+        populate_ray_ribbon_array_full(tx, ref_arr, num_ref, 3, angles, rarr);
+
+        free(angles);
+        return rarr;
 }
 
-static struct ribbon_node *_refine_ribbonnode(struct ribbon_node **node_array,
-                                      const double *point,
-                                      struct ribbon_node *rn,
-                                      bool null_node_array,
-                                      const struct perfect_reflector **pr)
+struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
+                                     const struct ray_ribbon *rb,
+                                     const struct receiver *rx,
+                                     const struct perfect_reflector **pr)
 {
-        // null node array should be called with false otherwise
-        // segmentation fault or memory leak will occur!
-        if (null_node_array) destroy_ray_ribbon_vertical_down(node_array[0]);
+        struct ray_ribbon_array *node_array_mod = generate_nearby_ribbons(
+                tx, pr, 10, rb);
 
-        if (rn != NULL && isclose(rn, point)) {
-                return rn;
-        }
+        const double *point = rx->gn.smm.position;
+        fprintf(stderr, "Position\n");
+        print_vector(point);
+        int ctr_typ_so_far = 0, ctr = 0;
 
-        if (rn != NULL && !isclose(rn, point)) {
-                node_array[0] = rn;
-                null_node_array = true;
-                rn = init_ribbonnode();
-        }
+        fprintf(stderr, "Found 3.  Now refining.\n");
+        fprintf(stderr, "First printing ray ribbons.\n");
 
-        if (rn == NULL) {
-                rn = init_ribbonnode();
-        }
+        print_rayribbon(*(node_array_mod->ribbons));
+        print_rayribbon(*(node_array_mod->ribbons + 1));
+        print_rayribbon(*(node_array_mod->ribbons + 2));
+        fprintf(stderr, "Point is: \n");
+        print_vector(point);
 
         double weights[3];
-        const struct ribbon_node **node_array_const =
-                (const struct ribbon_node **) node_array;
-        compute_averaging_coefficients(point, node_array_const, weights);
-        compute_average_ribbonnode(rn, node_array_const, weights);
-        bool has_hit = process_vertical_chain(rn, pr, 3);
+        struct ray_ribbon *rbn = *(node_array_mod->ribbons);
+        struct ribbon_node *rn = 0;
 
-        if (has_hit) {
-                return _refine_ribbonnode(node_array,
-                                          point, rn, null_node_array, pr);
-        } else {
-                return NULL;
+        while (!is_close_ribbon(*(node_array_mod->ribbons), point)) {
+                rn = init_ribbonnode();
+                compute_averaging_coefficients(point, node_array_mod, weights);
+                fprintf(stderr, "Weight is:\n"); print_vector(weights);
+                compute_average_ribbonnode(rn, node_array_mod, weights);
+                bool has_hit = process_vertical_chain(rn, pr, 3);
+                if (!has_hit) {
+                        fprintf(stderr, "Unexpected error.\n");
+                        exit(1);
+                }
+                (*(node_array_mod->ribbons))->head = rn;
+                print_rayribbon(*(node_array_mod->ribbons));
         }
+
+        return (*(node_array_mod->ribbons));
+}
+
+
+bool is_close_ribbon(const struct ray_ribbon *rb, const double *point)
+{
+        return isclose(rb->head, point);
 }
 
 bool isclose(const struct ribbon_node *rn, const double *point)
@@ -433,9 +546,10 @@ bool isclose(const struct ribbon_node *rn, const double *point)
         return false;
 }
 
-long type_vertical_strip(const struct ribbon_node *rn)
+long type_ray_ribbon(const struct ray_ribbon *rb)
 {
         int ctr=0;
+        struct ribbon_node *rn = rb->head;
         while (rn != NULL) {
                 ctr = MAX_SURFACES * ctr + rn->surface_index + 1;
                 rn = rn->down;
@@ -443,25 +557,74 @@ long type_vertical_strip(const struct ribbon_node *rn)
         return ctr;
 }
 
-struct ribbon_node **vertical_strip_for_points(struct ribbon_node **nodearray,
-                                        const double **points,
-                                        int num_points,
-                                        const struct perfect_reflector **pr)
+/* struct ribbon_node **vertical_strip_for_points(struct ribbon_node **nodearray, */
+/*                                         const double **points, */
+/*                                         int num_points, */
+/*                                         const struct perfect_reflector **pr) */
+/* { */
+/*         int ctr=0; */
+/*         struct ribbon_node **vertical_strips = */
+/*                 malloc(num_points*sizeof(struct ribbon_node *)); */
+/*         for (; ctr < num_points; ctr++) { */
+/*                 *(vertical_strips + ctr) = refine_ribbonnode(nodearray, */
+/*                                                              points[ctr], */
+/*                                                              NULL, pr); */
+/*         } */
+/*         return vertical_strips; */
+/* } */
+
+struct ray_ribbon_array *throw_three_dim_ray_ribbon(struct transmitter *tn,
+                                                    struct receiver *rx,
+                                                    const struct
+                                                    perfect_reflector **p,
+                                                    int num_ref,
+                                                    const double phi_start,
+                                                    const double phi_end,
+                                                    const double phi_incr,
+                                                    const double thet_start,
+                                                    const double thet_end,
+                                                    const double thet_incr)
 {
-        int ctr=0;
-        struct ribbon_node **vertical_strips =
-                malloc(num_points*sizeof(struct ribbon_node *));
-        for (; ctr < num_points; ctr++) {
-                *(vertical_strips + ctr) = refine_ribbonnode(nodearray,
-                                                             points[ctr],
-                                                             NULL, pr);
-        }
-        return vertical_strips;
+        struct ray_ribbon_array *rarr = malloc(sizeof(struct ray_ribbon_array));
+        populate_ray_ribbon_array_long(tn, rx, p, rarr,
+                                       num_ref, phi_start, phi_end,
+                                       phi_incr, thet_start, thet_end,
+                                       thet_incr);
+        return rarr;
 }
 
-/* struct path * generate_all_paths(struct transmitter * tn, struct receiver * rxarray, struct perfect_reflector * pr) */
-/* { */
-/*   // make all the transmitter, receiver and reflector arrays null terminated; that way code is simplified */
-/*   // look up best practices for documenting */
-/*   // look up best practices for testing */
-/* } */
+struct set_of_types *get_unique_types(const struct ray_ribbon_array *arr)
+{
+        struct set_of_types *st = init_set_of_types(NUM_TYPES);
+        int ctr = 0;
+        const struct ray_ribbon *rb = *(arr->ribbons + ctr);
+        while (*(st->types + ctr) >= 0) {
+                long typenum = type_ray_ribbon(rb);
+                add_entry(typenum, st);
+                ctr++;
+        }
+        return st;
+}
+
+void print_ray_ribbon_types(const struct ray_ribbon_array *arr)
+{
+        int ctr = 0;
+        const struct ray_ribbon *rb = *(arr->ribbons + ctr);
+        while (rb != NULL) {
+                long typenum = type_ray_ribbon(rb);
+                fprintf(stderr, "Type of ribbon %d is %ld\n ", ctr,
+                        typenum);
+                ctr++;
+                rb = *(arr->ribbons + ctr);
+        }
+
+}
+
+struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb)
+{
+        struct ribbon_node *rn = rb->head;
+        while (rn->down != NULL) {
+                rn = rn->down;
+        }
+        return rn;
+}
