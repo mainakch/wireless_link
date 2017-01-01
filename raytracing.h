@@ -67,11 +67,11 @@ void populate_ray_ribbon_array_full(const struct transmitter *tx,
                                     const complex double *angles,
                                     struct ray_ribbon_array *rarr);
 struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn);
-struct ribbon_node *init_ribbonnode();
+struct ribbon_node *init_ribbon_node();
+void destroy_ray_ribbon(struct ray_ribbon *rb);
 void destroy_ray_ribbon_nodes(struct ray_ribbon *rb);
 void destroy_ray_ribbon_array(struct ray_ribbon_array *array);
-void unlink_ray_ribbon_node(struct ray_ribbon *rb, struct ribbon_node *rn);
-//assume that each path hits destination patch only once
+void destroy_ray_ribbon_array_all_but_first(struct ray_ribbon_array *array);
 void destroy_chain_of_ribbon_nodes(struct ribbon_node *rn);
 
 bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb);
@@ -81,12 +81,12 @@ bool process_vertical_chain(struct ribbon_node *rn,
                             const struct perfect_reflector **pr,
                             int num_reflections);
 void print_vector(const double *db);
-void print_rayribbon(const struct ray_ribbon *rb);
+void print_ray_ribbon(const struct ray_ribbon *rb);
 void print_ray_ribbon_array(const struct ray_ribbon_array *rarr);
 void print_vertical_strip(const struct ribbon_node *rn);
-void print_ribbonnode(const struct ribbon_node *rn);
+void print_ribbon_node(const struct ribbon_node *rn);
 int count_segments(const struct ribbon_node *rn);
-void compute_average_ribbonnode(struct ribbon_node *rn,
+void compute_average_ribbon_node(struct ribbon_node *rn,
                                 const struct ray_ribbon_array *rba,
                                 double *weights);
 void invert_spherical_angles(const double *unit_vector, double *phi,
