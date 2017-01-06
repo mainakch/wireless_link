@@ -1,6 +1,10 @@
-#include "models.h"
+#include "raytracing.h"
 
-static void cross_product(const double *v1, const double *v2, double *v3);
+static void add_reflector(struct environment *env, struct perfect_reflector *pr);
+static void add_transmitter(struct environment *env, struct transmitter *tx);
+static void add_receiver(struct environment *env, struct receiver *rx);
+static void add_general_node(struct environment *env, struct general_node *gn);
+
 
 int id()
 {
@@ -8,8 +12,9 @@ int id()
         return (id++);
 }
 
-void init_simulation(struct simulation *sim_not_null)
+struct simulation *init_simulation()
 {
+        struct simulation *sim_not_null = malloc(sizeof(struct simulation));
         sim_not_null->frequency = 60e9; // 60 Ghz
         sim_not_null->wavelength = C / sim_not_null->frequency;
         sim_not_null->delta_time = 0.1;
@@ -17,51 +22,53 @@ void init_simulation(struct simulation *sim_not_null)
         sim_not_null->min_limit = 0;
         sim_not_null->boundary_tolerance = 1;
         sim_not_null->total_time = 200;
+        return sim_not_null;
 }
 
-void init_spatial_motion_model(struct spatial_motion_model *smm)
+struct spatial_motion_model *init_spatial_motion_model()
 {
-        int ctr;
-        for (ctr = 0; ctr<3; ctr++) {
-                smm->velocity[ctr] = 0;
-                smm->position[ctr] = 5;
-        }
-        smm->distance_from_actual_source = 0;
-        smm->acceleration_factor = 20;
-        smm->is_static = false;
+        struct spatial_motion_model *smm = calloc(1,
+                sizeof(struct spatial_motion_model));
+        return smm;
 }
 
-void init_transmission_model(struct transmission_model *tm)
+struct transmission_model *init_transmission_model()
 {
+        struct transmission_model *tm = malloc(
+                sizeof(struct transmission_model));
         tm->power_in_dBm = -200;
-        tm->start_time = 0;
-        tm->end_time = 1000;
-        tm->initial_phase = 0;
-        tm->doppler_offset = 0;
+        return tm;
 }
 
-void init_propagation_model(struct propagation_model *pm)
+struct propagation_model *init_propagation_model()
 {
-        pm->distance = 0;
+        struct propagation_model *pm = calloc(1,
+                sizeof(struct propagation_model));
+        return pm;
 }
 
-void init_general_node(struct general_node *gn)
+struct general_node *init_general_node()
 {
-        init_spatial_motion_model(&(gn->smm));
-        init_transmission_model(&(gn->tm));
+        struct general_node *gn = malloc(sizeof(struct general_node));
+        gn->smm = init_spatial_motion_model();
+        gn->tm = init_transmission_model();
         gn->id = id();
+        return gn;
 }
 
-void init_transmitter(struct transmitter *tn)
+struct transmitter *init_transmitter()
 {
-        init_general_node(&(tn->gn));
-        tn->is_real_transmitter = false;
+        struct transmitter *tn = malloc(sizeof(struct transmitter));
+        tn->gn = init_general_node();
+        return tn;
 }
 
-void init_receiver(struct receiver *rc)
+struct receiver *init_receiver()
 {
-        init_general_node(&(rc->gn));
+        struct receiver *rc = malloc(sizeof(struct receiver));
+        rc->gn = init_general_node();
         rc->recv_noise_power = pow(10, -16);
+        return rc;
 }
 
 struct perfect_reflector *init_perfect_reflector(const double *normal,
@@ -84,6 +91,33 @@ struct perfect_reflector *init_perfect_reflector(const double *normal,
         return pr;
 }
 
+struct perfect_reflector *init_perfect_reflector_nine_pts_direction(
+        const double *pt1, const double *pt2,
+        const double *pt3, bool direction) {
+        // find out normal
+        double v1[3];
+        double v2[3];
+        double vnormal[3] = {0, 0, 0};
+        double center_pt[3];
+        diff(pt1, pt2, v1);
+        diff(pt3, pt2, v2);
+        cross_product(v1, v2, vnormal);
+        normalize_unit_vector(vnormal);
+        // handle user supplied input if pt1 is at origin
+        double out = cblas_ddot(3, vnormal, 1, pt1, 1);
+        if (out * direction > 0) {
+                cblas_dscal(3, -1, vnormal, 1);
+        }
+        // compute center point
+        cblas_dcopy(3, pt1, 1, center_pt, 1);
+        cblas_daxpy(3, 1, pt3, 1, center_pt, 1);
+        cblas_dscal(3, 0.5, center_pt, 1);
+        double length = cblas_dnrm2(3, v1, 1);
+        double width = cblas_dnrm2(3, v2, 1);
+        normalize_unit_vector(v1);
+        return init_perfect_reflector(vnormal, center_pt, v1, length, width);
+}
+
 struct perfect_reflector **init_perfect_reflectorarray(int number)
 {
         struct perfect_reflector **pr = calloc(number,
@@ -91,57 +125,221 @@ struct perfect_reflector **init_perfect_reflectorarray(int number)
         return pr;
 }
 
-void init_environment(struct environment *env)
+struct environment *init_environment()
 {
-        if (!(env->num_transmitters > 0 && env->num_receivers > 0)
-            || env->total_time < 1) {
-                fprintf(stderr,
-                        "Please set non zero tx, rx and total time\n");
-                exit(EXIT_FAILURE);
-        }
-
-        env->_num_transmitters_ctr = 0;
-        env->_num_receivers_ctr = 0;
-        env->num_virtual_transmitters = 0;
-        env->time = 0;
-        init_environment_malloc(env);
-}
-
-void init_environment_malloc(struct environment *env)
-{
-        fprintf(stderr, "Inside malloc for environment\n");
-        env->receivers_array = calloc(env->num_receivers,
-                                      sizeof(struct receiver));
-        env->transmitters_array = calloc(env->num_transmitters,
-                                         sizeof(struct transmitter));
-        env->node_array = calloc((env->num_receivers +
-                                  env->num_transmitters),
+        struct environment *env = calloc(1, sizeof(struct environment));
+        env->receivers_array = calloc(11, sizeof(struct receiver *));
+        env->transmitters_array = calloc(11,
+                                         sizeof(struct transmitter *));
+        env->node_array = calloc(21,
                                  sizeof(struct general_node *));
-        env->unit_power_gaussian_noise = calloc((env->num_receivers),
-                                                sizeof(complex double));
+        // env->unit_power_gaussian_noise = calloc(11, sizeof(complex double));
+        env->prarray = calloc(11, sizeof(struct perfect_reflector *));
+        env->env_paths = calloc(11, sizeof(struct ray_ribbon_array *));
+        // size of env paths is the same as the size of receivers_array
+        env->tx_paths = calloc(11, sizeof(struct ray_ribbon_array *));
+        // size of tx paths is the same as the size of transmitters_array
+
+        env->sz_array_tx = 11;
+        env->sz_array_rx = 11;
+        env->sz_array_gn = 21;
+        env->sz_array_pr = 11;
+        return env;
 }
 
-void init_filereader(struct filereader *fr)
+struct file_reader *init_file_reader(const char *input, const char *output)
 {
-        printf("Opening %s for writing \n", fr->output_filename);
-        printf("Opening %s for reading \n", fr->input_filename);
+        struct file_reader *fr = calloc(1, sizeof(struct file_reader));
 
-        fr->infile = fopen(fr->input_filename, "r");
-        fr->outfile = fopen(fr->output_filename, "w");
+        printf("Opening %s for writing \n", output);
+        printf("Opening %s for reading \n", input);
+
+        fr->infile = fopen(input, "r");
+        fr->outfile = fopen(output, "w");
+        strncpy(fr->input_filename, input, 999);
+        fr->input_filename[999] = 0;
+        strncpy(fr->output_filename, output, 999);
+        fr->output_filename[999] = 0;
+        return fr;
+}
+
+void print_vector(const double *db)
+{
+        int ctr;
+        for(ctr = 0; ctr < 3; ctr++) {
+                fprintf(stderr, "%lf ", *(db + ctr));
+        }
+        fprintf(stderr, "\n");
+}
+
+void print_spatial_motion_model(const struct spatial_motion_model *smm) {
+        fprintf(stderr, ANSI_COLOR_BLUE "Velocity: \n");
+        print_vector(smm->velocity);
+        fprintf(stderr, ANSI_COLOR_RESET);
+        fprintf(stderr, "Position: \n");
+        print_vector(smm->position);
+}
+
+void print_transmission_model(const struct transmission_model *tm) {
+        fprintf(stderr, "Transmission model: \n");
+        fprintf(stderr, "Power in dBm: %lf\n", tm->power_in_dBm);
+}
+
+void print_propagation_model(const struct propagation_model *pm) {
+        fprintf(stderr, "%lf\n", pm->distance);
+}
+
+void print_general_node(const struct general_node *gn) {
+        fprintf(stderr, "Printing general node id %d:\n", gn->id);
+        print_spatial_motion_model(gn->smm);
+        print_transmission_model(gn->tm);
+}
+
+void print_transmitter(const struct transmitter *tx) {
+        fprintf(stderr, "Printing transmitter with id %d:\n", tx->gn->id);
+        print_general_node(tx->gn);
+}
+
+void print_receiver(const struct receiver *rx) {
+        fprintf(stderr, "Printing receiver with id %d:\n", rx->gn->id);
+        print_general_node(rx->gn);
+        fprintf(stderr, "Receiver noise power: %lf\n", rx->recv_noise_power);
+}
+
+void print_perfect_reflectors(const struct perfect_reflector *pr) {
+        fprintf(stderr, "Printing perfect reflector ...\n");
+        fprintf(stderr, ANSI_COLOR_RED "Printing unit normal\n");
+        print_vector(pr->unit_normal);
+        fprintf(stderr, ANSI_COLOR_RESET);
+        fprintf(stderr, "Printing unit length normal\n");
+        print_vector(pr->unit_length_normal);
+        fprintf(stderr, "Printing unit width normal\n");
+        print_vector(pr->unit_width_normal);
+        fprintf(stderr, "Printing center point\n");
+        print_vector(pr->center_point);
+        fprintf(stderr, "Length: %lf, Width: %lf\n", pr->length, pr->width);
+}
+
+void print_environment(const struct environment *env) {
+        fprintf(stderr, ANSI_COLOR_RED "At transmitter time %lf: \n"
+                ANSI_COLOR_RESET, env->transmitter_time);
+        fprintf(stderr, "Printing environment\n");
+        fprintf(stderr, "Printing transmitters:\n");
+        int ctr = 0;
+        while (*(env->transmitters_array + ctr) != 0) {
+                print_transmitter(*(env->transmitters_array + ctr));
+                ctr++;
+        }
+        ctr = 0;
+        fprintf(stderr, "Printing receivers:\n");
+        while (*(env->receivers_array + ctr) != 0) {
+                print_receiver(*(env->receivers_array + ctr));
+                ctr++;
+        }
+        ctr = 0;
+        fprintf(stderr, "Printing perfect reflectors:\n");
+        while (*(env->prarray + ctr) != 0) {
+                print_perfect_reflectors(*(env->prarray + ctr));
+                ctr++;
+        }
+        fprintf(stderr, "Wavelength: %lf, Frequency: %lf\n", env->wavelength,
+                env->frequency);
+
+        fprintf(stderr, ANSI_COLOR_GREEN "Printing tx paths \n");
+        ctr = 0;
+        while (*(env->tx_paths + ctr) != 0) {
+                print_ray_ribbon_array(*(env->tx_paths + ctr));
+                ctr++;
+        }
+        fprintf(stderr, ANSI_COLOR_GREEN "Printing env paths \n");
+        ctr = 0;
+        while (*(env->env_paths + ctr) != 0) {
+                print_ray_ribbon_array(*(env->env_paths + ctr));
+                ctr++;
+        }
+        fprintf(stderr, ANSI_COLOR_RESET);
+}
+
+void destroy_spatial_motion_model(struct spatial_motion_model *smm)
+{
+        free(smm);
+}
+
+void destroy_simulation(struct simulation *sim)
+{
+        free(sim);
+}
+
+void destroy_transmission_model(struct transmission_model *tm)
+{
+        free(tm);
+}
+
+void destroy_propagation_model(struct propagation_model *pm)
+{
+        free(pm);
+}
+
+void destroy_general_node(struct general_node *gn)
+{
+        free(gn->smm);
+        free(gn->tm);
+        free(gn);
+}
+
+void destroy_transmitter(struct transmitter *tn)
+{
+        destroy_general_node(tn->gn);
+        free(tn);
+}
+
+void destroy_receiver(struct receiver *rc)
+{
+        destroy_general_node(rc->gn);
+        free(rc);
 }
 
 void destroy_environment(struct environment *env)
 {
+        int ctr = 0;
+        struct transmitter *tn = *(env->transmitters_array + ctr);
+        while (tn != NULL) {
+                destroy_transmitter(tn);
+                destroy_ray_ribbon_array(*(env->tx_paths + ctr));
+                ctr++;
+                tn = *(env->transmitters_array + ctr);
+        }
+        ctr = 0;
+        struct receiver *rx = *(env->receivers_array + ctr);
+        while (rx != NULL) {
+                destroy_receiver(rx);
+                destroy_ray_ribbon_array(*(env->env_paths + ctr));
+                ctr++;
+                rx = *(env->receivers_array + ctr);
+        }
+        ctr = 0;
+        struct perfect_reflector *pr = *(env->prarray + ctr);
+        while (pr != NULL) {
+                destroy_perfect_reflector(pr);
+                ctr++;
+                pr = *(env->prarray + ctr);
+        }
+
         free(env->receivers_array);
         free(env->transmitters_array);
         free(env->node_array);
         free(env->unit_power_gaussian_noise);
+        free(env->prarray);
+        free(env->env_paths);
+        free(env->tx_paths);
+        free(env);
 }
 
-void destroy_filereader(struct filereader *fr)
+void destroy_file_reader(struct file_reader *fr)
 {
         if (fr->infile != NULL)  fclose(fr->infile);
         if (fr->outfile != NULL)  fclose(fr->outfile);
+        free(fr);
 }
 
 void destroy_perfect_reflector(struct perfect_reflector *pr)
@@ -177,58 +375,13 @@ double _gaussrand() // http://c-faq.com/lib/gaussian.html
         return Z;
 }
 
-void interaction_scatterer(void *sc, struct transmitter *tx,
-                           struct transmitter *out_array, int *number)
+struct file_reader *parse_input(int argc, char *argv[])
 {
-        // assume that sc is perfect_reflector
-        struct perfect_reflector *pr = (struct perfect_reflector *) sc;
-
-        // check if source is on the reflective side
-        double pos[3];
-        cblas_dcopy(3, tx->gn.smm.position, 1, pos, 1);
-        cblas_daxpy(3, -1, pr->center_point, 1, pos, 1);
-        if (cblas_ddot(3, pos, 1, pr->unit_normal, 1) > 0) {
-                // facing non reflective side
-                // return after setting number of virtual
-                // sources added to zero
-                *number = 0;
-                return;
-        }
-
-        // source is on the reflective side now
-        // compute position transformation
-        // pos contains difference of tx - center_point
-        double factor0 = -2 * cblas_ddot(3, pos, 1, pr->unit_normal, 1);
-        double reflected_position[3];
-        cblas_dcopy(3, tx->gn.smm.position, 1, reflected_position, 1);
-        cblas_daxpy(3, factor0, pr->unit_normal, 1,
-                    reflected_position, 1);
-
-        // compute velocity transformation
-        double reflected_velocity[3];
-        double factor1;
-        cblas_dcopy(3, tx->gn.smm.velocity, 1, reflected_velocity, 1);
-        factor1 = -2 * cblas_ddot(3, tx->gn.smm.velocity, 1,
-                                pr->unit_normal, 1);
-        cblas_daxpy(3, factor1, pr->unit_normal, 1,
-                    reflected_velocity, 1);
-
-        // compute power attenuation factor
-
-        double norm = cblas_dnrm2(3, pos, 1);
-        double cosangle = abs(factor0 / (2 * norm));
-        double factor2 = pr->length * pr->width * cosangle/
-                (4 * PI * norm * norm);
-
-        // add virtual transmitter to the array
-        // TODO
-        *number = 1;
-}
-
-void parse_input(int argc, char *argv[], struct filereader *fr)
-{
-        strcpy(fr->input_filename, "/tmp/input.txt");
-        strcpy(fr->output_filename, "/tmp/output.txt");
+        // initialized to zero in C99
+        char inputname[1000];
+        char outputname[1000];
+        strcpy(inputname, "/tmp/input.txt");
+        strcpy(outputname, "/tmp/output.txt");
 
         struct option long_options[] = {
                 {"input_filename", required_argument, 0, 'i'},
@@ -236,7 +389,7 @@ void parse_input(int argc, char *argv[], struct filereader *fr)
                 {0, 0, 0, 0}
         };
 
-        int c=0, option_index;
+        int c = 0, option_index;
         c = getopt_long(argc, argv, "i:o:",
                         long_options, &option_index);
         while (c != -1) {
@@ -244,10 +397,10 @@ void parse_input(int argc, char *argv[], struct filereader *fr)
                 case 0:
                         break;
                 case 'i':
-                        strcpy(fr->input_filename, optarg);
+                        strncpy(inputname, optarg, 999);
                         break;
                 case 'o':
-                        strcpy(fr->output_filename, optarg);
+                        strncpy(outputname, optarg, 999);
                         break;
                 default:
                         fprintf(stderr, "Error parsing options\n");
@@ -256,11 +409,235 @@ void parse_input(int argc, char *argv[], struct filereader *fr)
                 c = getopt_long(argc, argv, "i:o:",
                                 long_options, &option_index);
         }
+
+        return init_file_reader(inputname, outputname);
 }
 
-static void cross_product(const double *v1, const double *v2, double *v3)
+void cross_product(const double *v1, const double *v2, double *v3)
 {
         v3[0] = v1[1] * v2[2] - v1[2] * v2[1];
         v3[1] = v1[2] * v2[0] - v1[0] * v2[2];
         v3[2] = v1[0] * v2[1] - v1[1] * v2[0];
+}
+
+void normalize_unit_vector(double *v1)
+{
+        double normv1 =  cblas_dnrm2(3, v1, 1);
+        cblas_dscal(3, 1/normv1, v1, 1);
+}
+
+void diff(const double *v1, const double *v2, double *v3)
+{
+        cblas_dcopy(3, v2, 1, v3, 1);
+        cblas_daxpy(3, -1, v1, 1, v3, 1);
+}
+
+int find_len(void **ptr)
+{
+        int ctr = 0;
+        while (*(ptr + ctr) != 0) {
+                ctr++;
+        }
+        return ctr;
+}
+
+void add_receiver_patch(struct environment *env)
+{
+        double vec[3];
+        double vec_perp[3] = {0, 0, 0};
+        vec[0] = rand(); vec[1] = rand(); vec[2] = rand();
+        cross_product(vec, env->recv_unit_normal, vec_perp);
+        normalize_unit_vector(vec_perp);
+        double *position = (*(env->receivers_array))->gn->smm->position;
+        print_vector(position);
+        struct perfect_reflector *new_reflector =
+                init_perfect_reflector(
+                        env->recv_unit_normal,
+                        (*(env->receivers_array))->gn->smm->position,
+                        vec_perp,
+                        5, 5);
+
+        fprintf(stderr, "Studenchdnehth\n");
+        print_perfect_reflectors(new_reflector);
+        // make this value sufficiently large 5, 5 so that it can catch
+        // all rays, setting it too high may cause problems with non linearity
+
+        add_reflector(env, new_reflector);
+}
+
+void destroy_last_reflector(struct environment *env)
+{
+        struct perfect_reflector *pr = *(env->prarray + env->num_reflectors - 1);
+        destroy_perfect_reflector(pr);
+        env->num_reflectors--;
+        *(env->prarray + env->num_reflectors) = 0;
+}
+
+static void add_reflector(struct environment *env, struct perfect_reflector *pr)
+{
+        if (env->num_reflectors >= env->sz_array_pr) {
+                int new_size = 2 * env->sz_array_pr;
+                void *tmp = realloc(env->prarray,
+                              new_size * sizeof(struct perfect_reflector *));
+                if (tmp == 0) exit(1);
+                env->prarray = tmp;
+                env->sz_array_pr = new_size;
+        }
+        *(env->prarray + env->num_reflectors) = pr;
+        env->num_reflectors++;
+        *(env->prarray + env->num_reflectors) = 0;
+}
+
+static void add_transmitter(struct environment *env, struct transmitter *tx)
+{
+        if (env->num_transmitters >= env->sz_array_tx) {
+                int new_size = 2 * env->sz_array_tx;
+                void *tmp = realloc(env->transmitters_array,
+                              new_size * sizeof(struct transmitter *));
+                if (tmp == 0) exit(1);
+                env->transmitters_array = tmp;
+                env->sz_array_tx = new_size;
+        }
+        *(env->transmitters_array + env->num_transmitters) = tx;
+        env->num_transmitters++;
+        *(env->transmitters_array + env->num_transmitters) = 0;
+        add_general_node(env, tx->gn);
+}
+
+static void add_receiver(struct environment *env, struct receiver *rx)
+{
+        if (env->num_receivers >= env->sz_array_tx) {
+                int new_size = 2 * env->sz_array_tx;
+                void *tmp = realloc(env->receivers_array,
+                              new_size * sizeof(struct receiver *));
+                if (tmp == 0) exit(1);
+                env->receivers_array = tmp;
+                *(env->receivers_array + env->num_receivers + 1) = 0;
+                env->sz_array_tx = new_size;
+        }
+        *(env->receivers_array + env->num_receivers) = rx;
+        env->num_receivers++;
+        *(env->receivers_array + env->num_receivers) = 0;
+        add_general_node(env, rx->gn);
+}
+
+static void add_general_node(struct environment *env, struct general_node *gn)
+{
+        int length = env->num_transmitters + env->num_receivers;
+        if (length >= env->sz_array_gn) {
+                int new_size = 2 * env->sz_array_gn;
+                void *tmp = realloc(env->node_array,
+                              new_size * sizeof(struct general_node *));
+                if (tmp == 0) exit(1);
+                env->node_array = tmp;
+                env->sz_array_gn = length;
+        }
+        *(env->node_array + length - 1) = gn;
+        *(env->node_array + length) = 0;
+}
+
+
+double distance(const struct general_node *gn1, const struct general_node *gn2)
+{
+        double *pos1 = gn1->smm->position;
+        double *pos2 = gn2->smm->position;
+
+        double diff[3];
+        cblas_dcopy(3, pos1, 1, diff, 1);
+        cblas_daxpy(3, -1, pos2, 1, diff, 1);
+
+        return cblas_dnrm2(3, diff, 1);
+}
+
+bool update_environment_from_file(struct environment *env, FILE *fp)
+{
+        if (fp == NULL)
+        {
+                fprintf(stderr, "Fatal error: input file not provided!\n");
+                exit(EXIT_FAILURE); // fix potential memory errors
+        }
+
+        char mode[] = "r";
+        char fmt[] = "%s"; // check for vulnerabilities
+        char buff[100];
+        bool eofflag = true;
+        while (fscanf(fp, fmt, buff) != EOF) {
+                eofflag = false;
+                handle_request(env, fp, buff);
+                if (strcmp(buff, "End") == 0) break;
+        }
+        return eofflag;
+}
+
+void handle_request(struct environment *env, FILE *fp, const char *req_type)
+{
+        int ctr;
+        if (!strcmp(req_type, "Nodepath")) {
+                int id;
+                fscanf(fp, "%d", &id);
+                fprintf(stderr, "id: %d\n", id);
+
+                for (ctr=0; ctr<3; ctr++) {
+                        fscanf(fp, "%lf",
+                               &(env->node_array[id]->smm->position[ctr]));
+                        fscanf(fp, "%lf",
+                               &(env->node_array[id]->smm->velocity[ctr]));
+                }
+        } else if (!strcmp(req_type, "Gaussianrand")) {
+                for (ctr=0; ctr < env->num_receivers; ctr++) {
+                        double re, im;
+                        fscanf(fp, "%lf", &re);
+                        fscanf(fp, "%lf", &im);
+                        env->unit_power_gaussian_noise[ctr] =
+                                pow(0.5, -0.5)*(re + I*im);
+                }
+        } else if (!strcmp(req_type, "Time")) {
+                fscanf(fp, "%lf", &(env->transmitter_time));
+        } else if (!strcmp(req_type, "End")) {
+                if (!(env->read_in_nodes)) {
+                        env->read_in_nodes = 1;
+                        env->unit_power_gaussian_noise =
+                                calloc(env->num_receivers,
+                                       sizeof(complex double));
+                }
+        } else if (!strcmp(req_type, "Frequency")) {
+                fscanf(fp, "%lf", &env->frequency);
+                env->wavelength = C/env->frequency;
+        } else if (!strcmp(req_type, "Transmitter")) {
+                struct transmitter *tx = init_transmitter();
+                fscanf(fp, "%d", &tx->gn->id);
+                fscanf(fp, "%lf", &tx->gn->tm->power_in_dBm);
+                add_transmitter(env, tx);
+        } else if (!strcmp(req_type, "Receiver")) {
+                struct receiver *rx = init_receiver();
+                fscanf(fp, "%d", &rx->gn->id);
+                double np;
+                fscanf(fp, "%lf", &np);
+                rx->recv_noise_power = pow(10, np/10);
+                add_receiver(env, rx);
+        } else if (!strcmp(req_type, "Perfectreflector")) {
+                double pt1[3][3];
+                double direction;
+                int ctr1;
+                for (ctr1 = 0; ctr1 < 3; ctr1++) {
+                        for (ctr = 0; ctr < 3; ctr++) {
+                                fscanf(fp, "%lf", &pt1[ctr1][ctr]);
+                        }
+                }
+                fscanf(fp, "%lf", &direction);
+                add_reflector(env, init_perfect_reflector_nine_pts_direction(
+                                      pt1[0], pt1[1], pt1[2],  direction));
+        } else if (!strcmp(req_type, "Frequency")) {
+                fscanf(fp, "%lf", &(env->frequency));
+                env->wavelength = C/env->frequency;
+        } else if (!strcmp(req_type, "Receivernormal")) {
+	        double v1[3];
+		for(ctr = 0; ctr < 3; ctr++) {
+		        fscanf(fp, "%lf", &v1[ctr]);
+		}
+                cblas_dcopy(3, v1, 1, env->recv_unit_normal, 1);
+                normalize_unit_vector(env->recv_unit_normal);
+	} else if (!strcmp(req_type, "Deltatime")) {
+                fscanf(fp, "%lf", &(env->delta_time));
+        }
 }

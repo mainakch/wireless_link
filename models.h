@@ -15,6 +15,14 @@
 
 #define C 299792458
 #define PI 3.141592654
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_GREEN   "\x1b[32m"
+#define ANSI_COLOR_YELLOW  "\x1b[33m"
+#define ANSI_COLOR_BLUE    "\x1b[34m"
+#define ANSI_COLOR_MAGENTA "\x1b[35m"
+#define ANSI_COLOR_CYAN    "\x1b[36m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
 
 struct simulation {
         double frequency;
@@ -29,17 +37,10 @@ struct simulation {
 struct spatial_motion_model {
         double velocity[3];
         double position[3];
-        double acceleration_factor;
-        double distance_from_actual_source;
-        bool is_static;
 };
 
 struct transmission_model {
         double power_in_dBm;
-        double start_time;
-        double end_time;
-        double initial_phase;
-        double doppler_offset;
 };
 
 struct propagation_model {
@@ -47,18 +48,17 @@ struct propagation_model {
 };
 
 struct general_node {
-        struct spatial_motion_model smm;
-        struct transmission_model tm;
+        struct spatial_motion_model *smm;
+        struct transmission_model *tm;
         int id;
 };
 
 struct transmitter {
-        struct general_node gn;
-        bool is_real_transmitter;
+        struct general_node *gn;
 };
 
 struct receiver {
-        struct general_node gn;
+        struct general_node *gn;
         double recv_noise_power;
 };
 
@@ -71,28 +71,37 @@ struct perfect_reflector {
 };
 
 struct environment {
-        int _num_receivers_ctr;
-        int _num_transmitters_ctr;
-        int num_receivers;
-        int num_transmitters;
-        int num_virtual_transmitters;
-        struct receiver *receivers_array;
-        struct transmitter *transmitters_array;
-        int time;
+        struct receiver **receivers_array;
+        struct transmitter **transmitters_array;
+        struct perfect_reflector **prarray;
         struct general_node **node_array;
+        struct ray_ribbon_array **env_paths;
+        struct ray_ribbon_array **tx_paths;
 
+        double recv_unit_normal[3];
+        double transmitter_time;
+        int current_time_index;
         double complex *unit_power_gaussian_noise;
-
         double frequency;
         double wavelength;
         double delta_time;
         double max_limit;
         double min_limit;
         double boundary_tolerance;
-        int total_time;
+
+        int num_transmitters;
+        int num_receivers;
+        int num_reflectors;
+
+        int sz_array_tx;
+        int sz_array_rx;
+        int sz_array_gn;
+        int sz_array_pr;
+
+        bool read_in_nodes;
 };
 
-struct filereader {
+struct file_reader {
         FILE *infile;
         FILE *outfile;
         // filenames longer than 1000 will be rejected
@@ -101,26 +110,53 @@ struct filereader {
 };
 
 int id();
-void init_simulation(struct simulation *sim_not_null);
-void init_spatial_motion_model(struct spatial_motion_model *smm);
-void init_transmission_model(struct transmission_model *tm);
-void init_propagation_model(struct propagation_model *pm);
-void init_general_node(struct general_node *gn);
-void init_transmitter(struct transmitter *tn);
-void init_receiver(struct receiver *rc);
+struct simulation *init_simulation();
+struct spatial_motion_model *init_spatial_motion_model();
+struct transmission_model *init_transmission_model();
+struct propagation_model *init_propagation_model();
+struct general_node *init_general_node();
+struct transmitter *init_transmitter();
+struct receiver *init_receiver();
 struct perfect_reflector *init_perfect_reflector(const double *normal,
                                          const double *center_point,
                                          const double *length_normal,
                                          double length, double width);
 struct perfect_reflector **init_perfect_reflectorarray(int number);
-void init_environment(struct environment *env);
-void init_environment_malloc(struct environment *env);
-void init_filereader(struct filereader *fr);
+struct environment *init_environment();
+struct file_reader *init_file_reader();
+
+void print_vector(const double *db);
+void print_spatial_motion_model(const struct spatial_motion_model *smm);
+void print_transmission_model(const struct transmission_model *tm);
+void print_propagation_model(const struct propagation_model *pm);
+void print_general_node(const struct general_node *gn);
+void print_transmitter(const struct transmitter *tx);
+void print_receiver(const struct receiver *rx);
+void print_perfect_reflectors(const struct perfect_reflector *pr);
+void print_environment(const struct environment *env);
+
+void destroy_spatial_motion_model(struct spatial_motion_model *smm);
+void destroy_simulation(struct simulation *sim);
+void destroy_transmission_model(struct transmission_model *tm);
+void destroy_propagation_model(struct propagation_model *pm);
+void destroy_transmitter(struct transmitter *tx);
+void destroy_receiver(struct receiver *tx);
 void destroy_environment(struct environment *env);
-void destroy_filereader(struct filereader *fr);
+void destroy_file_reader(struct file_reader *fr);
 void destroy_perfect_reflector(struct perfect_reflector *pr);
 void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin);
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
-void interaction_scatterer(void *sc, struct transmitter *tx,
-                           struct transmitter *out_array, int *number);
-void parse_input(int argc, char *argv[], struct filereader *fr);
+struct file_reader *parse_input(int argc, char *argv[]);
+void cross_product(const double *v1, const double *v2, double *v3);
+void normalize_unit_vector(double *v1);
+void diff(const double *v1, const double *v2, double *v3);
+int find_len(void **ptr);
+
+void add_receiver_patch(struct environment *env);
+void destroy_last_reflector(struct environment *env);
+double distance(const struct general_node *gn1,
+                const struct general_node *gn2);
+
+bool update_environment_from_file(struct environment *env,
+                                FILE *fp);
+void handle_request(struct environment *env, FILE *fp, const char *req_type);
