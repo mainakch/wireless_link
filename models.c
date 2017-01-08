@@ -222,7 +222,7 @@ void print_perfect_reflectors(const struct perfect_reflector *pr) {
 
 void print_environment(const struct environment *env) {
         fprintf(stderr, ANSI_COLOR_RED "At transmitter time %lf: \n"
-                ANSI_COLOR_RESET, env->transmitter_time);
+                ANSI_COLOR_RESET, env->time);
         fprintf(stderr, "Printing environment\n");
         fprintf(stderr, "Printing transmitters:\n");
         int ctr = 0;
@@ -449,7 +449,7 @@ void add_receiver_patch(struct environment *env)
         cross_product(vec, env->recv_unit_normal, vec_perp);
         normalize_unit_vector(vec_perp);
         double *position = (*(env->receivers_array))->gn->smm->position;
-        print_vector(position);
+        //print_vector(position);
         struct perfect_reflector *new_reflector =
                 init_perfect_reflector(
                         env->recv_unit_normal,
@@ -457,8 +457,10 @@ void add_receiver_patch(struct environment *env)
                         vec_perp,
                         5, 5);
 
-        fprintf(stderr, "Studenchdnehth\n");
-        print_perfect_reflectors(new_reflector);
+        if (_MODEL_DEBUG) {
+                fprintf(stderr, "Studenchdnehth\n");
+                print_perfect_reflectors(new_reflector);
+        }
         // make this value sufficiently large 5, 5 so that it can catch
         // all rays, setting it too high may cause problems with non linearity
 
@@ -575,7 +577,7 @@ void handle_request(struct environment *env, FILE *fp, const char *req_type)
         if (!strcmp(req_type, "Nodepath")) {
                 int id;
                 fscanf(fp, "%d", &id);
-                fprintf(stderr, "id: %d\n", id);
+                if (_MODEL_DEBUG) fprintf(stderr, "id: %d\n", id);
 
                 for (ctr=0; ctr<3; ctr++) {
                         fscanf(fp, "%lf",
@@ -592,7 +594,7 @@ void handle_request(struct environment *env, FILE *fp, const char *req_type)
                                 pow(0.5, -0.5)*(re + I*im);
                 }
         } else if (!strcmp(req_type, "Time")) {
-                fscanf(fp, "%lf", &(env->transmitter_time));
+                fscanf(fp, "%lf", &(env->time));
         } else if (!strcmp(req_type, "End")) {
                 if (!(env->read_in_nodes)) {
                         env->read_in_nodes = 1;
@@ -639,5 +641,7 @@ void handle_request(struct environment *env, FILE *fp, const char *req_type)
                 normalize_unit_vector(env->recv_unit_normal);
 	} else if (!strcmp(req_type, "Deltatime")) {
                 fscanf(fp, "%lf", &(env->delta_time));
+        } else if (!strcmp(req_type, "Endtime")) {
+                fscanf(fp, "%lf", &(env->end_time));
         }
 }

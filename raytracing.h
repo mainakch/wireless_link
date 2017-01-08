@@ -2,6 +2,7 @@
 
 #define MAX_SURFACES 10
 #define NUM_TYPES 100
+#define _RAYTRACING_DEBUG 0
 
 struct half_infinite_ray {
         double point[3];
@@ -23,6 +24,7 @@ struct ray_ribbon {
         struct ribbon_node *head;
         double delay;
         double doppler;
+        // phases not normalized by 2 PI
         double integrated_doppler_phase;
         double gain;
         double reflection_phase;
@@ -136,3 +138,6 @@ double compute_doppler(const struct ray_ribbon *rb,
 double length_ribbon_node(const struct ribbon_node *rn);
 void reflect(const double *pos1, const double *n1, double *vel, double *pos);
 void reflection_operation(const double *v1, const double *n1, double *vref);
+void readout_all_signals(struct environment *env, FILE *fpout);
+void clear_tx_paths(struct environment *env);
+void clear_env_paths(struct environment *env);

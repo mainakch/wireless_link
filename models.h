@@ -22,7 +22,7 @@
 #define ANSI_COLOR_MAGENTA "\x1b[35m"
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
-
+#define _MODEL_DEBUG 0
 
 struct simulation {
         double frequency;
@@ -79,12 +79,12 @@ struct environment {
         struct ray_ribbon_array **tx_paths;
 
         double recv_unit_normal[3];
-        double transmitter_time;
-        int current_time_index;
+        double time;
         double complex *unit_power_gaussian_noise;
         double frequency;
         double wavelength;
         double delta_time;
+        double end_time;
         double max_limit;
         double min_limit;
         double boundary_tolerance;

@@ -1,11 +1,5 @@
 #include "raytracing.h"
 
-static struct ribbon_node *_refine_ribbon_node(struct ribbon_node **node_array,
-                                      const double *point,
-                                      struct ribbon_node *rn,
-                                      bool null_node_array,
-                                      const struct perfect_reflector **pr);
-
 int counter()
 {
         static int ctr = 0;
@@ -52,7 +46,6 @@ struct ray_ribbon_array *init_ray_ribbon_array(int number)
                 calloc(1, sizeof(struct ray_ribbon_array));
         rarr->ribbons = calloc(number, sizeof(struct ray_ribbon *));
         rarr->max_len = number;
-        rarr->current_len = 0;
         return rarr;
 }
 
@@ -81,7 +74,7 @@ void populate_ray_ribbon_array_long(struct transmitter *tx,
 {
         int num_points = (1 + floor((phi_end - phi_start) / phi_delta)) *
                 (1 + floor((thet_end - thet_start) / thet_delt));
-        fprintf(stderr, "Number is %d\n", num_points);
+        if (_RAYTRACING_DEBUG) fprintf(stderr, "Number is %d\n", num_points);
         complex double *angles = malloc(num_points * sizeof(complex double));
 
         int ctr = 0;
@@ -274,7 +267,7 @@ complex double compute_intersection(struct half_infinite_ray *hr,
         cblas_daxpy(3, -1, pr->center_point, 1, diff, 1);
         t = -cblas_ddot(3, diff, 1, pr->unit_normal, 1)
                 /cblas_ddot(3, hr->unit_direction, 1, pr->unit_normal, 1);
-        //fprintf(stderr, "t obtained is %lf\n", t);
+        //if (_RAYTRACING_DEBUG) fprintf(stderr, "t obtained is %lf\n", t);
 
         // check if t lies within the bounds of the patch
 
@@ -529,14 +522,21 @@ struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
         struct ray_ribbon_array *rarr = init_ray_ribbon_array(4);
 
         complex double *angles = malloc(3 * sizeof(complex double));
-        *angles = (phi - 0.0000059) + I * (theta + 0.0000057);
-        *(angles + 1) = phi + 0.000004 + I * (theta + 0.000009);
-        *(angles + 2) = phi + 0.0000039 + I * (theta + 0.0000011);
+        double fact = 1e-6/RAND_MAX;
+        *angles = (phi - fact * rand()) + I * (theta + fact * rand());
+        *(angles + 1) = phi + fact * rand() + I * (theta + fact * rand());
+        *(angles + 2) = phi + fact * rand() + I * (theta + fact * rand());
 
         populate_ray_ribbon_array_full(tx, ref_arr, num_ref, 3, angles, rarr,
                                        false);
         free(angles);
         return rarr;
+        /* if (rarr->current_len > 2) return rarr; */
+        /* if (_RAYTRACING_DEBUG) { */
+        /*         fprintf(stderr, "Length is %d\n", rarr->current_len); */
+        /* } */
+        /* destroy_ray_ribbon_array(rarr); */
+        /* return generate_nearby_ribbons(tx, ref_arr, num_ref, rb); */
 }
 
 struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
@@ -547,17 +547,19 @@ struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
         struct ray_ribbon_array *node_array_mod = generate_nearby_ribbons(
                 tx, pr, 3, rb);
         const double *point = rx->gn->smm->position;
-        fprintf(stderr, "Position\n");
-        print_vector(point);
+        if (_RAYTRACING_DEBUG) {
+                fprintf(stderr, "Position\n");
+                print_vector(point);
+        }
         int ctr_typ_so_far = 0, ctr = 0;
         double weights[3];
         struct ray_ribbon *rbn = *(node_array_mod->ribbons);
         struct ribbon_node *rn = 0;
+        const int ctrmax = 100;
 
-        while (!is_close_ribbon(rbn, point)) {
+        while ((!is_close_ribbon(rbn, point)) && ctr < ctrmax) {
                 compute_averaging_coefficients(point, node_array_mod, weights);
                 rn = init_ribbon_node();
-                /* fprintf(stderr, "Weight is:\n"); print_vector(weights); */
                 compute_average_ribbon_node(rn, node_array_mod, weights);
                 destroy_ray_ribbon_nodes(rbn);
                 bool has_hit = process_vertical_chain(rn, pr, 3);
@@ -567,13 +569,21 @@ struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
                 }
                 (*(node_array_mod->ribbons))->head = rn;
                 rbn =  *(node_array_mod->ribbons);
+                ctr++;
                 // print_ray_ribbon(*(node_array_mod->ribbons));
         }
 
         destroy_ray_ribbon_array_all_but_first(node_array_mod);
-        rbn->start_gn = tx->gn;
-        rbn->end_gn = rx->gn;
-        return rbn;
+        if (ctr < ctrmax) {
+                rbn->start_gn = tx->gn;
+                rbn->end_gn = rx->gn;
+                return rbn;
+        } else {
+                destroy_ray_ribbon(rbn);
+                return 0;
+        }
+
+        // return 0 if ray ribbon does not converge
 }
 
 
@@ -643,8 +653,9 @@ void print_ray_ribbon_types(const struct ray_ribbon_array *arr)
         const struct ray_ribbon *rb = *(arr->ribbons + ctr);
         while (rb != NULL) {
                 long typenum = type_ray_ribbon(rb);
-                fprintf(stderr, "Type of ribbon %d is %ld\n ", ctr,
-                        typenum);
+                if (_RAYTRACING_DEBUG) fprintf(stderr,
+                                               "Type of ribbon %d is %ld\n ",
+                                               ctr, typenum);
                 ctr++;
                 rb = *(arr->ribbons + ctr);
         }
@@ -667,60 +678,61 @@ void populate_env_paths(struct environment *env)
         // first sound the channel
         const struct perfect_reflector **prconst =
                 (const struct perfect_reflector **) env->prarray;
-        // clear existing paths
-        int ctr = 0;
-        while (*(env->tx_paths + ctr) != 0) {
-                destroy_ray_ribbon_array(*(env->tx_paths + ctr));
-                *(env->tx_paths + ctr) = 0;
-                ctr++;
-        }
+        clear_tx_paths(env);
 
         // now populate individual paths
-        ctr = 0;
+        int ctr = 0;
         struct transmitter *tx = *(env->transmitters_array);
         while (tx != 0) {
-                struct ray_ribbon_array *rb_arr = init_ray_ribbon_array(20);
+                struct ray_ribbon_array *rb_arr = init_ray_ribbon_array(10);
                 populate_ray_ribbon_array(tx, prconst, rb_arr, 300, 3, true);
                 *(env->tx_paths + ctr) = rb_arr;
                 ctr++;
+                *(env->tx_paths + ctr) = 0;
                 tx = *(env->transmitters_array + ctr);
         }
 
         // now generate rayribbons for each receiver
-        // clear existing ray ribbons
-        ctr = 0;
-        while (*(env->env_paths + ctr) != 0) {
-                destroy_ray_ribbon_array(*(env->env_paths + ctr));
-                *(env->env_paths + ctr) = 0;
-                ctr++;
-        }
+        // clear existing ray ribbon arrays
+        clear_env_paths(env);
 
+        // ctr loops over receivers
         ctr = 0;
         struct receiver *rx = *(env->receivers_array);
         while (rx != 0) {
+                // ctr1 loops over transmitters
                 int ctr1 = 0;
                 struct ray_ribbon_array *rba = *(env->tx_paths);
-                struct ray_ribbon *rb;
                 struct transmitter *tx = *(env->transmitters_array);
+                struct ray_ribbon_array *rb_arr =
+                        init_ray_ribbon_array(8); // change this number
                 while (rba != 0) {
-                        struct ray_ribbon_array *rb_arr =
-                                init_ray_ribbon_array(5); // change this number
+                        // ctr2 loops over rays from a part. tx to part. rx
                         int ctr2 = 0;
-                        while((rb = *(rba->ribbons + ctr2)) != 0) {
-                                add_ray_ribbon(
-                                        rb_arr,
-                                        refine_ray_ribbon(tx, rb, rx, prconst),
-                                        true);
+                        struct ray_ribbon *rb;
+                        rb = *(rba->ribbons + ctr2);
+                        while(rb != 0) {
+                                struct ray_ribbon *tmprb =
+                                        refine_ray_ribbon(tx, rb, rx, prconst);
+
+                                add_ray_ribbon(rb_arr, tmprb, true);
+                                /* if (tmprb != 0) { */
+                                /*         if (!add_ray_ribbon(rb_arr, */
+                                /*                             tmprb, true)) { */
+                                /*                 fprintf(stderr, "Unexpected\n"); */
+                                /*                 exit(1); */
+                                /*         } */
+                                /* } */
                                 ctr2++;
                                 rb = *(rba->ribbons + ctr2);
-
                         }
-                        *(env->env_paths + ctr1) = rb_arr;
                         ctr1++;
                         rba = *(env->tx_paths + ctr1);
                         tx = *(env->transmitters_array + ctr1);
                 }
+                *(env->env_paths + ctr) = rb_arr;
                 ctr++;
+                *(env->env_paths + ctr) = 0;
                 rx = *(env->receivers_array + ctr);
         }
 
@@ -748,12 +760,17 @@ void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
         if (rb == 0) return;
         // compute delay
         double dist = 0;
+        rb->reflection_phase = -1;
         struct ribbon_node *rn = rb->head;
         while (rn != NULL) {
                 dist += length_ribbon_node(rn);
                 rn = rn->down;
+                rb->reflection_phase++;
         }
         rb->delay = dist/C;
+        // free space path loss
+        rb->gain = 1 / (4 * PI * dist / env->wavelength);
+
         // compute doppler
         rb->doppler = compute_doppler(rb, env);
 }
@@ -806,4 +823,62 @@ void reflection_operation(const double *v1, const double *n1, double *vref) {
         cblas_dcopy(3, v1, 1, vref, 1);
         double tmp = cblas_ddot(3, n1, 1, vref, 1);
         cblas_daxpy(3, -2 * tmp, n1, 1, vref, 1);
+}
+
+void readout_all_signals(struct environment *env, FILE *fpout) {
+        complex double signal;
+        struct ray_ribbon_array *rba;
+        int ctr = 0;
+        rba = *(env->env_paths + ctr);
+        while (rba != 0) {
+                signal = 0;
+                int ctr1 = 0;
+                struct ray_ribbon *rb = *(rba->ribbons + ctr1);
+                while (rb != 0) {
+
+                        rb->integrated_doppler_phase = fmod(
+                                (rb->integrated_doppler_phase +
+                                 rb->doppler * env->delta_time), 1);
+
+                        double phase = 0;
+                        phase += rb->integrated_doppler_phase
+                                + rb->reflection_phase -
+                                (env->frequency + rb->doppler) * rb->delay;
+                        signal += rb->gain * cexp(2 * PI * phase * I);
+                        ctr1++;
+                        rb = *(rba->ribbons + ctr1);
+
+                }
+                struct receiver *rx = (*(env->receivers_array + ctr));
+                double rx_noise_std = pow(rx->recv_noise_power, 0.5);
+                signal += rx_noise_std *
+                        (*(env->unit_power_gaussian_noise + ctr));
+                if (fpout != NULL) {
+                        fprintf(fpout, "Time: %lf, receiver: %d,"
+                                "real: %lf, imag: %lf\n",
+                                env->time, ctr, creal(signal), cimag(signal));
+                }
+                ctr++;
+                rba = *(env->env_paths + ctr);
+        }
+}
+
+void clear_tx_paths(struct environment *env) {
+        // clear existing paths
+        int ctr = 0;
+        while (*(env->tx_paths + ctr) != 0) {
+                destroy_ray_ribbon_array(*(env->tx_paths + ctr));
+                *(env->tx_paths + ctr) = 0;
+                ctr++;
+        }
+}
+
+void clear_env_paths(struct environment *env) {
+        // clear existing paths
+        int ctr = 0;
+        while (*(env->env_paths + ctr) != 0) {
+                destroy_ray_ribbon_array(*(env->env_paths + ctr));
+                *(env->env_paths + ctr) = 0;
+                ctr++;
+        }
 }
