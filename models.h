@@ -134,6 +134,7 @@ void print_transmitter(const struct transmitter *tx);
 void print_receiver(const struct receiver *rx);
 void print_perfect_reflectors(const struct perfect_reflector *pr);
 void print_environment(const struct environment *env);
+void print_env_paths_two_dimensions(const struct environment *env);
 
 void destroy_spatial_motion_model(struct spatial_motion_model *smm);
 void destroy_simulation(struct simulation *sim);

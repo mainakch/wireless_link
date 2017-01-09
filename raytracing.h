@@ -88,6 +88,7 @@ bool process_vertical_chain(struct ribbon_node *rn,
                             const struct perfect_reflector **pr,
                             int num_reflections);
 void print_ray_ribbon(const struct ray_ribbon *rb);
+void print_ray_ribbon_flattened(const struct ray_ribbon *rb);
 void print_ray_ribbon_array(const struct ray_ribbon_array *rarr);
 void print_vertical_strip(const struct ribbon_node *rn);
 void print_ribbon_node(const struct ribbon_node *rn);
@@ -129,6 +130,7 @@ struct ray_ribbon_array *throw_three_dim_ray_ribbon(struct transmitter *tn,
 struct set_of_types *get_unique_types(const struct ray_ribbon_array *arr);
 void print_ray_ribbon_types(const struct ray_ribbon_array *arr);
 struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb);
+void populate_tx_paths(struct environment *env);
 void populate_env_paths(struct environment *env);
 void update_env_paths_delay_dopplers(struct environment *env);
 void update_ribbon_delay_dopplers(struct ray_ribbon *rb,

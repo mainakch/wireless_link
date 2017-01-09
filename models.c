@@ -128,10 +128,10 @@ struct perfect_reflector **init_perfect_reflectorarray(int number)
 struct environment *init_environment()
 {
         struct environment *env = calloc(1, sizeof(struct environment));
-        env->receivers_array = calloc(11, sizeof(struct receiver *));
+        env->receivers_array = calloc(1700, sizeof(struct receiver *));
         env->transmitters_array = calloc(11,
                                          sizeof(struct transmitter *));
-        env->node_array = calloc(21,
+        env->node_array = calloc(1700 + 11 - 1,
                                  sizeof(struct general_node *));
         // env->unit_power_gaussian_noise = calloc(11, sizeof(complex double));
         env->prarray = calloc(11, sizeof(struct perfect_reflector *));
@@ -141,8 +141,8 @@ struct environment *init_environment()
         // size of tx paths is the same as the size of transmitters_array
 
         env->sz_array_tx = 11;
-        env->sz_array_rx = 11;
-        env->sz_array_gn = 21;
+        env->sz_array_rx = 1700;
+        env->sz_array_gn = 1700 + 11 - 1;
         env->sz_array_pr = 11;
         return env;
 }
@@ -256,6 +256,26 @@ void print_environment(const struct environment *env) {
         while (*(env->env_paths + ctr) != 0) {
                 print_ray_ribbon_array(*(env->env_paths + ctr));
                 ctr++;
+        }
+        fprintf(stderr, ANSI_COLOR_RESET);
+}
+
+void print_env_paths_two_dimensions(const struct environment *env)
+{
+        int ctr = 0, ctr1 = 0;
+        struct ray_ribbon_array *rba = *(env->env_paths);
+        fprintf(stderr, ANSI_COLOR_RED);
+        while (rba != 0) {
+                while (*(rba->ribbons + ctr1) != 0) {
+                        fprintf(stderr, "Time: %lf, ", env->time);
+                        fprintf(stderr, "Doppler: %lf, ",
+                                (*(rba->ribbons + ctr1))->doppler);
+                        print_ray_ribbon_flattened(
+                                *(rba->ribbons + ctr1));
+                        ctr1++;
+                }
+                ctr++;
+                rba = *(env->env_paths + ctr);
         }
         fprintf(stderr, ANSI_COLOR_RESET);
 }
@@ -455,7 +475,7 @@ void add_receiver_patch(struct environment *env)
                         env->recv_unit_normal,
                         (*(env->receivers_array))->gn->smm->position,
                         vec_perp,
-                        5, 5);
+                        10, 10);
 
         if (_MODEL_DEBUG) {
                 fprintf(stderr, "Studenchdnehth\n");
