@@ -60,6 +60,7 @@ struct transmitter *init_transmitter()
 {
         struct transmitter *tn = malloc(sizeof(struct transmitter));
         tn->gn = init_general_node();
+        tn->baseband_signal = 1;
         return tn;
 }
 
@@ -128,22 +129,22 @@ struct perfect_reflector **init_perfect_reflectorarray(int number)
 struct environment *init_environment()
 {
         struct environment *env = calloc(1, sizeof(struct environment));
-        env->receivers_array = calloc(1700, sizeof(struct receiver *));
-        env->transmitters_array = calloc(11,
+        env->receivers_array = calloc(MAX_RX + 1, sizeof(struct receiver *));
+        env->transmitters_array = calloc(MAX_TX + 1,
                                          sizeof(struct transmitter *));
-        env->node_array = calloc(1700 + 11 - 1,
+        env->node_array = calloc(MAX_TX + MAX_RX + 1,
                                  sizeof(struct general_node *));
         // env->unit_power_gaussian_noise = calloc(11, sizeof(complex double));
-        env->prarray = calloc(11, sizeof(struct perfect_reflector *));
-        env->env_paths = calloc(11, sizeof(struct ray_ribbon_array *));
+        env->prarray = calloc(MAX_SURFACES + 2, sizeof(struct perfect_reflector *));
+        env->env_paths = calloc(MAX_RX + 1, sizeof(struct ray_ribbon_array *));
         // size of env paths is the same as the size of receivers_array
-        env->tx_paths = calloc(11, sizeof(struct ray_ribbon_array *));
+        env->tx_paths = calloc(MAX_TX + 1, sizeof(struct ray_ribbon_array *));
         // size of tx paths is the same as the size of transmitters_array
 
-        env->sz_array_tx = 11;
-        env->sz_array_rx = 1700;
-        env->sz_array_gn = 1700 + 11 - 1;
-        env->sz_array_pr = 11;
+        env->sz_array_tx = MAX_TX + 1;
+        env->sz_array_rx = MAX_RX + 1;
+        env->sz_array_gn = MAX_TX + MAX_RX + 1;
+        env->sz_array_pr = MAX_SURFACES + 2;
         return env;
 }
 
@@ -260,12 +261,17 @@ void print_environment(const struct environment *env) {
         fprintf(stderr, ANSI_COLOR_RESET);
 }
 
-void print_env_paths_two_dimensions(const struct environment *env)
+void print_env_paths(const struct environment *env)
 {
-        int ctr = 0, ctr1 = 0;
+        int ctr = 0;
+        // ctr loops over receivers
         struct ray_ribbon_array *rba = *(env->env_paths);
         fprintf(stderr, ANSI_COLOR_RED);
         while (rba != 0) {
+                int ctr1 = 0;
+                fprintf(stderr, "\n\n Printing for receiver %d\n\n",
+                        ctr);
+                // ctr1 loops over rays
                 while (*(rba->ribbons + ctr1) != 0) {
                         fprintf(stderr, "Time: %lf, ", env->time);
                         fprintf(stderr, "Doppler: %lf, ",
@@ -276,6 +282,29 @@ void print_env_paths_two_dimensions(const struct environment *env)
                 }
                 ctr++;
                 rba = *(env->env_paths + ctr);
+        }
+        fprintf(stderr, ANSI_COLOR_RESET);
+}
+
+void print_tx_paths(const struct environment *env)
+{
+        int ctr = 0;
+        struct ray_ribbon_array *rba = *(env->tx_paths);
+        fprintf(stderr, ANSI_COLOR_BLUE);
+
+        while (ctr < env->num_transmitters) {
+                fprintf(stderr, "\n\n Printing transmitter %d:\n\n", ctr);
+                int ctr1 = 0;
+                while (*(rba->ribbons + ctr1) != 0) {
+                        fprintf(stderr, "Time: %lf, ", env->time);
+                        fprintf(stderr, "Doppler: %lf, ",
+                                (*(rba->ribbons + ctr1))->doppler);
+                        print_ray_ribbon_flattened(
+                                *(rba->ribbons + ctr1));
+                        ctr1++;
+                }
+                ctr++;
+                rba = *(env->tx_paths + ctr);
         }
         fprintf(stderr, ANSI_COLOR_RESET);
 }
@@ -461,7 +490,7 @@ int find_len(void **ptr)
         return ctr;
 }
 
-void add_receiver_patch(struct environment *env)
+void add_receiver_patch(struct environment *env, int length)
 {
         double vec[3];
         double vec_perp[3] = {0, 0, 0};
@@ -475,7 +504,7 @@ void add_receiver_patch(struct environment *env)
                         env->recv_unit_normal,
                         (*(env->receivers_array))->gn->smm->position,
                         vec_perp,
-                        10, 10);
+                        length, length);
 
         if (_MODEL_DEBUG) {
                 fprintf(stderr, "Studenchdnehth\n");
@@ -512,7 +541,7 @@ static void add_reflector(struct environment *env, struct perfect_reflector *pr)
 
 static void add_transmitter(struct environment *env, struct transmitter *tx)
 {
-        if (env->num_transmitters >= env->sz_array_tx) {
+        if (env->num_transmitters + 1 >= env->sz_array_tx) {
                 int new_size = 2 * env->sz_array_tx;
                 void *tmp = realloc(env->transmitters_array,
                               new_size * sizeof(struct transmitter *));
@@ -619,9 +648,18 @@ void handle_request(struct environment *env, FILE *fp, const char *req_type)
                 if (!(env->read_in_nodes)) {
                         env->read_in_nodes = 1;
                         env->unit_power_gaussian_noise =
-                                calloc(env->num_receivers,
+                                calloc(env->num_receivers + 1,
                                        sizeof(complex double));
                 }
+        } else if (!strcmp(req_type, "Transmittersignal")) {
+                int id;
+                fscanf(fp, "%d", &id);
+                double re, im;
+                fscanf(fp, "%lf", &re);
+                fscanf(fp, "%lf", &im);
+                struct transmitter *tx;
+                tx = *(env->transmitters_array + id);
+                tx->baseband_signal = re + I * im;
         } else if (!strcmp(req_type, "Frequency")) {
                 fscanf(fp, "%lf", &env->frequency);
                 env->wavelength = C/env->frequency;

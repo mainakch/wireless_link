@@ -23,6 +23,11 @@
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define _MODEL_DEBUG 0
+#define MAX_TX 10
+#define MAX_RX 1700
+#define MAX_RIBBON_SIZE 20
+#define MAX_SURFACES 20
+// if max values exceeded, may cause memory bugs
 
 struct simulation {
         double frequency;
@@ -55,6 +60,7 @@ struct general_node {
 
 struct transmitter {
         struct general_node *gn;
+        double complex baseband_signal;
 };
 
 struct receiver {
@@ -134,7 +140,8 @@ void print_transmitter(const struct transmitter *tx);
 void print_receiver(const struct receiver *rx);
 void print_perfect_reflectors(const struct perfect_reflector *pr);
 void print_environment(const struct environment *env);
-void print_env_paths_two_dimensions(const struct environment *env);
+void print_env_paths(const struct environment *env);
+void print_tx_paths(const struct environment *env);
 
 void destroy_spatial_motion_model(struct spatial_motion_model *smm);
 void destroy_simulation(struct simulation *sim);
@@ -153,7 +160,7 @@ void normalize_unit_vector(double *v1);
 void diff(const double *v1, const double *v2, double *v3);
 int find_len(void **ptr);
 
-void add_receiver_patch(struct environment *env);
+void add_receiver_patch(struct environment *env, int length);
 void destroy_last_reflector(struct environment *env);
 double distance(const struct general_node *gn1,
                 const struct general_node *gn2);

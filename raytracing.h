@@ -1,6 +1,5 @@
 #include "models.h"
 
-#define MAX_SURFACES 10
 #define NUM_TYPES 100
 #define _RAYTRACING_DEBUG 0
 
@@ -28,8 +27,8 @@ struct ray_ribbon {
         double integrated_doppler_phase;
         double gain;
         double reflection_phase;
-        struct general_node *start_gn;
-        struct general_node *end_gn;
+        struct transmitter *start_gn;
+        struct receiver *end_gn;
 };
 
 struct ray_ribbon_array {
@@ -67,7 +66,7 @@ void populate_ray_ribbon_array_long(struct transmitter *tx,
 void populate_ray_ribbon_array_full(const struct transmitter *tx,
                                     const struct perfect_reflector **ref_arr,
                                     int num_ref, int num_points,
-                                    const complex double *angles,
+                                    const double complex *angles,
                                     struct ray_ribbon_array *rarr,
                                     bool single_type);
 struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn);
@@ -77,13 +76,15 @@ void destroy_ray_ribbon_nodes(struct ray_ribbon *rb);
 void destroy_ray_ribbon_array(struct ray_ribbon_array *array);
 void destroy_ray_ribbon_array_all_but_first(struct ray_ribbon_array *array);
 void destroy_chain_of_ribbon_nodes(struct ribbon_node *rn);
+void destroy_ribbon_node(struct ribbon_node *rn);
 
 bool check_same_type(const struct ray_ribbon *ray_rb1,
                      const struct ray_ribbon *ray_rb2);
 bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb,
                     bool single_type);
-complex double compute_intersection(struct half_infinite_ray *hr,
+double complex compute_intersection(struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr);
+void remove_ribbon_node_duplicates(struct ribbon_node *rn);
 bool process_vertical_chain(struct ribbon_node *rn,
                             const struct perfect_reflector **pr,
                             int num_reflections);
