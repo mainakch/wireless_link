@@ -273,8 +273,8 @@ void print_env_paths(const struct environment *env)
                         ctr);
                 // ctr1 loops over rays
                 while (*(rba->ribbons + ctr1) != 0) {
-                        fprintf(stderr, "Time: %lf, ", env->time);
-                        fprintf(stderr, "Doppler: %lf, ",
+                        fprintf(stderr, "Time: %lf; ", env->time);
+                        fprintf(stderr, "Doppler: %lf; ",
                                 (*(rba->ribbons + ctr1))->doppler);
                         print_ray_ribbon_flattened(
                                 *(rba->ribbons + ctr1));

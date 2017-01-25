@@ -107,6 +107,10 @@ struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
                                                  perfect_reflector **ref_arr,
                                                  int num_ref,
                                                  const struct ray_ribbon *rb);
+struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
+                                     const struct ray_ribbon *rb,
+                                     const struct receiver *rx,
+                                     const struct perfect_reflector **pr);
 struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
                                      const struct ray_ribbon *rb,
                                      const struct receiver *rx,

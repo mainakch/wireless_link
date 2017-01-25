@@ -24,7 +24,7 @@
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define _MODEL_DEBUG 0
 #define MAX_TX 10
-#define MAX_RX 1700
+#define MAX_RX 2600
 #define MAX_RIBBON_SIZE 20
 #define MAX_SURFACES 20
 // if max values exceeded, may cause memory bugs
