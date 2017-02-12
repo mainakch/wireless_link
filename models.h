@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <cblas.h>
 #include <complex.h>
 #include <fftw3.h>
@@ -66,6 +67,7 @@ struct transmitter {
 struct receiver {
         struct general_node *gn;
         double recv_noise_power;
+        struct receiver_ray_ribbon **rrbn;
 };
 
 struct perfect_reflector {

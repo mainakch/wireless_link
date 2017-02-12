@@ -37,15 +37,41 @@ struct ray_ribbon_array {
         int current_len;
 };
 
-struct set_of_types {
-        long *types;
+struct receiver_ray_ribbon {
+        // linked list of receiver ray ribbons
+        struct ray_ribbon *ribbon;
+        struct signal_buffer *signal;
+        double delay;
+        double doppler;
+        // phases not normalized by 2 PI
+        double integrated_doppler_phase;
+        double gain;
+        double reflection_phase;
+        bool active;
+        struct transmitter *start_gn;
 };
 
+struct signal_buffer {
+        // linked list of signal buffer
+        struct signal_buffer *next;
+        double complex signal;
+        double transmit_time;
+};
 
-struct set_of_types *init_set_of_types(int number);
-void destroy_set_of_types(struct set_of_types *st);
-void add_entry(long number, struct set_of_types *st);
-
+struct receiver_ray_ribbon *init_receiver_ray_ribbon(
+        struct receiver *rx,
+        struct ray_ribbon *ribbon,
+        struct environment *env);
+void populate_receiver_ray_ribbons(struct environment *env);
+bool update_receiver_ray_ribbons(struct receiver *rx,
+                                struct environment *env);
+void update_all_receiver_ray_ribbons(struct environment *env);
+void update_receiver_ray_ribbons_signal_buffer(struct receiver *rx,
+                                              struct environment *env);
+void destroy_receiver_ray_ribbon(struct receiver_ray_ribbon *rrbn);
+struct signal_buffer *init_signal_buffer();
+void destroy_signal_buffer(struct signal_buffer *sgn);
+struct signal_buffer *destroy_signal_buffer_first(struct signal_buffer *sgn);
 struct ray_ribbon_array *init_ray_ribbon_array(int number);
 void populate_ray_ribbon_array(struct transmitter *tx,
                                const struct perfect_reflector **patcharray,
@@ -107,7 +133,7 @@ struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
                                                  perfect_reflector **ref_arr,
                                                  int num_ref,
                                                  const struct ray_ribbon *rb);
-struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
+const struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                      const struct ray_ribbon *rb,
                                      const struct receiver *rx,
                                      const struct perfect_reflector **pr);
@@ -132,13 +158,13 @@ struct ray_ribbon_array *throw_three_dim_ray_ribbon(struct transmitter *tn,
                                                     const double thet_start,
                                                     const double thet_end,
                                                     const double thet_incr);
-struct set_of_types *get_unique_types(const struct ray_ribbon_array *arr);
-void print_ray_ribbon_types(const struct ray_ribbon_array *arr);
 struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb);
 void populate_tx_paths(struct environment *env);
 void populate_env_paths(struct environment *env);
 void update_env_paths_delay_dopplers(struct environment *env);
 void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
+                                  const struct environment *env);
+void update_receiver_ribbon_delay_dopplers(struct receiver_ray_ribbon *rrb,
                                   const struct environment *env);
 double compute_doppler(const struct ray_ribbon *rb,
                        const struct environment *env);

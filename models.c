@@ -69,6 +69,7 @@ struct receiver *init_receiver()
         struct receiver *rc = malloc(sizeof(struct receiver));
         rc->gn = init_general_node();
         rc->recv_noise_power = pow(10, -16);
+        rc->rrbn = calloc(16, sizeof(struct receiver_ray_ribbon *));
         return rc;
 }
 
@@ -345,6 +346,14 @@ void destroy_transmitter(struct transmitter *tn)
 void destroy_receiver(struct receiver *rc)
 {
         destroy_general_node(rc->gn);
+        struct receiver_ray_ribbon *rrbn = *(rc->rrbn);
+        int ctr = 1;
+        while (rrbn != 0) {
+                destroy_receiver_ray_ribbon(rrbn);
+                rrbn = *(rc->rrbn + ctr);
+                ctr++;
+        }
+        free(rc->rrbn);
         free(rc);
 }
 
@@ -526,14 +535,14 @@ void destroy_last_reflector(struct environment *env)
 
 static void add_reflector(struct environment *env, struct perfect_reflector *pr)
 {
-        if (env->num_reflectors >= env->sz_array_pr) {
-                int new_size = 2 * env->sz_array_pr;
-                void *tmp = realloc(env->prarray,
-                              new_size * sizeof(struct perfect_reflector *));
-                if (tmp == 0) exit(1);
-                env->prarray = tmp;
-                env->sz_array_pr = new_size;
-        }
+        /* if (env->num_reflectors >= env->sz_array_pr) { */
+        /*         int new_size = 2 * env->sz_array_pr; */
+        /*         void *tmp = realloc(env->prarray, */
+        /*                       new_size * sizeof(struct perfect_reflector *)); */
+        /*         if (tmp == 0) exit(1); */
+        /*         env->prarray = tmp; */
+        /*         env->sz_array_pr = new_size; */
+        /* } */
         *(env->prarray + env->num_reflectors) = pr;
         env->num_reflectors++;
         *(env->prarray + env->num_reflectors) = 0;
@@ -541,14 +550,14 @@ static void add_reflector(struct environment *env, struct perfect_reflector *pr)
 
 static void add_transmitter(struct environment *env, struct transmitter *tx)
 {
-        if (env->num_transmitters + 1 >= env->sz_array_tx) {
-                int new_size = 2 * env->sz_array_tx;
-                void *tmp = realloc(env->transmitters_array,
-                              new_size * sizeof(struct transmitter *));
-                if (tmp == 0) exit(1);
-                env->transmitters_array = tmp;
-                env->sz_array_tx = new_size;
-        }
+        /* if (env->num_transmitters + 1 >= env->sz_array_tx) { */
+        /*         int new_size = 2 * env->sz_array_tx; */
+        /*         void *tmp = realloc(env->transmitters_array, */
+        /*                       new_size * sizeof(struct transmitter *)); */
+        /*         if (tmp == 0) exit(1); */
+        /*         env->transmitters_array = tmp; */
+        /*         env->sz_array_tx = new_size; */
+        /* } */
         *(env->transmitters_array + env->num_transmitters) = tx;
         env->num_transmitters++;
         *(env->transmitters_array + env->num_transmitters) = 0;
@@ -557,17 +566,18 @@ static void add_transmitter(struct environment *env, struct transmitter *tx)
 
 static void add_receiver(struct environment *env, struct receiver *rx)
 {
-        if (env->num_receivers >= env->sz_array_tx) {
-                int new_size = 2 * env->sz_array_tx;
-                void *tmp = realloc(env->receivers_array,
-                              new_size * sizeof(struct receiver *));
-                if (tmp == 0) exit(1);
-                env->receivers_array = tmp;
-                *(env->receivers_array + env->num_receivers + 1) = 0;
-                env->sz_array_tx = new_size;
-        }
+        /* if (env->num_receivers >= env->sz_array_tx) { */
+        /*         int new_size = 2 * env->sz_array_tx; */
+        /*         void *tmp = realloc(env->receivers_array, */
+        /*                       new_size * sizeof(struct receiver *)); */
+        /*         if (tmp == 0) exit(1); */
+        /*         env->receivers_array = tmp; */
+        /*         *(env->receivers_array + env->num_receivers + 1) = 0; */
+        /*         env->sz_array_tx = new_size; */
+        /* } */
         *(env->receivers_array + env->num_receivers) = rx;
         env->num_receivers++;
+        // fprintf(stderr, "Nulling %d\n", env->num_receivers);
         *(env->receivers_array + env->num_receivers) = 0;
         add_general_node(env, rx->gn);
 }
@@ -575,14 +585,14 @@ static void add_receiver(struct environment *env, struct receiver *rx)
 static void add_general_node(struct environment *env, struct general_node *gn)
 {
         int length = env->num_transmitters + env->num_receivers;
-        if (length >= env->sz_array_gn) {
-                int new_size = 2 * env->sz_array_gn;
-                void *tmp = realloc(env->node_array,
-                              new_size * sizeof(struct general_node *));
-                if (tmp == 0) exit(1);
-                env->node_array = tmp;
-                env->sz_array_gn = length;
-        }
+        /* if (length >= env->sz_array_gn) { */
+        /*         int new_size = 2 * env->sz_array_gn; */
+        /*         void *tmp = realloc(env->node_array, */
+        /*                       new_size * sizeof(struct general_node *)); */
+        /*         if (tmp == 0) exit(1); */
+        /*         env->node_array = tmp; */
+        /*         env->sz_array_gn = length; */
+        /* } */
         *(env->node_array + length - 1) = gn;
         *(env->node_array + length) = 0;
 }
