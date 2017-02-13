@@ -234,7 +234,7 @@ void populate_ray_ribbon_array_full(const struct transmitter *tx,
 {
         int ctr = 0;
         double phi, theta;
-        while (ctr < num_points) {
+        for (ctr = 0; ctr < num_points; ctr++) {
                 phi = creal(*(angles + ctr));
                 theta = cimag(*(angles + ctr));
                 struct ribbon_node *rn = init_ribbon_node();
@@ -260,7 +260,6 @@ void populate_ray_ribbon_array_full(const struct transmitter *tx,
                 } else {
                         destroy_chain_of_ribbon_nodes(rn);
                 }
-                ctr++;
         }
 }
 
