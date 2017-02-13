@@ -220,7 +220,7 @@ void populate_ray_ribbon_array_long(struct transmitter *tx,
                         ctr++;
                 }
         }
-        populate_ray_ribbon_array_full(tx, ref_arr, num_ref, ctr,
+        populate_ray_ribbon_array_full_copy(tx, ref_arr, num_ref, ctr,
                                        angles, rarr, single_type);
         free(angles);
 }
@@ -249,10 +249,9 @@ void populate_ray_ribbon_array_full(const struct transmitter *tx,
                 bool hit_des = process_vertical_chain(rn,
                                                       ref_arr,
                                                       num_ref);
-                // remove_ribbon_node_duplicates(rn);
-
                 if (hit_des) {
                         struct ray_ribbon *rb = init_ray_ribbon(rn);
+                        rb->start_gn = tx;
                         bool ribbon_added = add_ray_ribbon(rarr, rb,
                                                            single_type);
                         if (!ribbon_added) destroy_ray_ribbon(rb);
@@ -261,6 +260,49 @@ void populate_ray_ribbon_array_full(const struct transmitter *tx,
                         destroy_chain_of_ribbon_nodes(rn);
                 }
         }
+}
+
+void populate_ray_ribbon_array_full_copy(const struct transmitter *tx,
+                                         const struct perfect_reflector **ref_arr,
+                                         int num_ref, int num_points,
+                                         const double complex *angles,
+                                         struct ray_ribbon_array *rarr,
+                                         bool single_type)
+{
+        int ctr = 0;
+        double phi, theta;
+
+        struct ribbon_node *rn = init_chain_of_ribbon_nodes(6);
+        struct ray_ribbon *rb = init_ray_ribbon(rn);
+        rb->start_gn = tx;
+
+        for (ctr = 0; ctr < num_points; ++ctr) {
+                phi = creal(*(angles + ctr));
+                theta = cimag(*(angles + ctr));
+                // struct ribbon_node *rn = init_ribbon_node();
+                cblas_dcopy(3, tx->gn->smm->position, 1,
+                            rn->current->point, 1);
+                double direction[3] = {cos(phi),
+                                       sin(phi) * cos(theta),
+                                       sin(phi) * sin(theta)};
+                cblas_dcopy(3, direction, 1,
+                            rn->current->unit_direction, 1);
+
+                bool hit_des = process_vertical_chain_nomalloc(rn,
+                                                               ref_arr,
+                                                               num_ref);
+                if (hit_des) {
+                        bool ribbon_added = add_ray_ribbon_copy(rarr, rb,
+                                                           single_type);
+                }
+
+                if (ctr % 10000 == 0 || hit_des) {
+                        fprintf(stderr, "%d out of %d, hit_des: %d\n",
+                                ctr, num_points, hit_des);
+                }
+        }
+
+        destroy_ray_ribbon(rb);
 }
 
 struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn)
@@ -272,15 +314,108 @@ struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn)
 
 struct ribbon_node *init_ribbon_node()
 {
-        struct ribbon_node *rn = malloc(sizeof(struct ribbon_node));
-        rn->current = malloc(sizeof(struct half_infinite_ray));
-        rn->down = 0;
+        struct ribbon_node *rn = calloc(1, sizeof(struct ribbon_node));
+        rn->current = calloc(1, sizeof(struct half_infinite_ray));
         rn->ctr = counter();
-        rn->num_reflections = 0;
-        rn->hit_destination_patch = false;
         rn->surface_index = -1;
         return rn;
 }
+
+struct ribbon_node *init_chain_of_ribbon_nodes(int length_of_node)
+{
+        int ctr = 0;
+
+        struct ribbon_node *rn = 0;
+        struct ribbon_node *rn_tmp = 0;
+        struct ribbon_node *rn_prev = 0;
+
+        while (ctr < length_of_node) {
+                rn_tmp = init_ribbon_node();
+                rn_tmp->num_reflections = ctr;
+
+                if (rn == 0) {
+                        rn = rn_tmp;
+                } else {
+                        rn_prev->down = rn_tmp;
+                }
+
+                rn_prev = rn_tmp;
+                ++ctr;
+        }
+
+        return rn;
+}
+
+struct ribbon_node *copy_ribbon_node(const struct ribbon_node *rn)
+{
+        struct ribbon_node *rn_new = 0;
+        struct ribbon_node *rn_tmp = 0;
+        struct ribbon_node *rn_tmp_prev = 0;
+        while (rn != 0) {
+                rn_tmp = init_ribbon_node();
+                rn_tmp->hit_destination_patch = rn->hit_destination_patch;
+                rn_tmp->num_reflections = rn->num_reflections;
+                rn_tmp->ctr = rn->ctr;
+                rn_tmp->surface_index = rn->surface_index;
+                *(rn_tmp->current) = *(rn->current);
+
+                if (rn_new == 0) {
+                        rn_new = rn_tmp;
+                } else {
+                        rn_tmp_prev->down = rn_tmp;
+                }
+                rn = rn->down;
+                rn_tmp_prev = rn_tmp;
+        }
+
+        return rn_new;
+}
+
+struct ribbon_node *copy_ribbon_node_till_dest(const struct ribbon_node *rn)
+{
+        struct ribbon_node *rn_new = 0;
+        struct ribbon_node *rn_tmp = 0;
+        struct ribbon_node *rn_tmp_prev = 0;
+        bool isfinal = false;
+        while (rn != 0 && !isfinal) {
+                rn_tmp = init_ribbon_node();
+                rn_tmp->hit_destination_patch = rn->hit_destination_patch;
+                rn_tmp->num_reflections = rn->num_reflections;
+                rn_tmp->ctr = rn->ctr;
+                rn_tmp->surface_index = rn->surface_index;
+                *(rn_tmp->current) = *(rn->current);
+
+                if (rn_new == 0) {
+                        rn_new = rn_tmp;
+                } else {
+                        rn_tmp_prev->down = rn_tmp;
+                }
+                isfinal = rn->hit_destination_patch;
+                rn = rn->down;
+                rn_tmp_prev = rn_tmp;
+        }
+
+        return rn_new;
+}
+
+struct ray_ribbon *copy_ray_ribbon(const struct ray_ribbon *rb, bool till_dest)
+{
+        struct ray_ribbon *rbnew = malloc(sizeof(struct ray_ribbon));
+        if (till_dest) {
+                rbnew->head = copy_ribbon_node_till_dest(rb->head);
+        } else {
+                rbnew->head = copy_ribbon_node(rb->head);
+        }
+        rbnew->start_gn = rb->start_gn;
+        rbnew->end_gn = rb->end_gn;
+        rbnew->delay = rb->delay;
+        rbnew->doppler = rb->doppler;
+        rbnew->integrated_doppler_phase = rb->integrated_doppler_phase;
+        rbnew->gain = rb->gain;
+        rbnew->reflection_phase = rb->reflection_phase;
+        return rbnew;
+}
+
 void destroy_ray_ribbon(struct ray_ribbon *rb)
 {
         destroy_ray_ribbon_nodes(rb);
@@ -358,29 +493,42 @@ bool check_same_type(const struct ray_ribbon *ray_rb1,
         // same type if same transmitter and same reflectors
         if (ray_rb1->start_gn != ray_rb2->start_gn) return false;
 
+        bool hit1, hit2;
+
         while(rn1 != NULL && rn2 != NULL) {
+                hit1 = rn1->hit_destination_patch;
+                hit2 = rn2->hit_destination_patch;
+
                 if (rn1->surface_index != rn2->surface_index) return false;
                 rn1 = rn1->down;
                 rn2 = rn2->down;
         }
-        return (rn1 == NULL && rn2 == NULL);
+        /* if (!(hit1 || hit2)) { */
+        /*         fprintf(stderr, "Hit1 %d, Hit2 %d\n", hit1, hit2); */
+        /*         print_ray_ribbon(ray_rb1); */
+        /*         print_ray_ribbon(ray_rb2); */
+        /* } */
+        assert(hit1 || hit2);
+
+        return (hit1 == hit2);
+        //return (rn1 == NULL && rn2 == NULL);
 }
 
 bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb,
                     bool single_type)
 {
         if (rb == NULL) return false;
-        if (array->current_len + 1 >= array->max_len) {
-                // automatic resizing
-                struct ray_ribbon **tmp =
-                        realloc(array->ribbons, 2 * array->max_len);
-                if (tmp == NULL) {
-                        return false;
-                } else {
-                        array->max_len *= 2;
-                        array->ribbons = tmp;
-                }
-        }
+        /* if (array->current_len + 1 >= array->max_len) { */
+        /*         // automatic resizing */
+        /*         struct ray_ribbon **tmp = */
+        /*                 realloc(array->ribbons, 2 * array->max_len); */
+        /*         if (tmp == NULL) { */
+        /*                 return false; */
+        /*         } else { */
+        /*                 array->max_len *= 2; */
+        /*                 array->ribbons = tmp; */
+        /*         } */
+        /* } */
 
         if (single_type) {
                 int ctr = 0;
@@ -398,7 +546,29 @@ bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb,
         // this enforces null termination
         *(array->ribbons + array->current_len) = 0;
         return true;
+}
 
+bool add_ray_ribbon_copy(struct ray_ribbon_array *array,
+                         const struct ray_ribbon *rb,
+                         bool single_type)
+{
+        if (rb == NULL) return false;
+        if (single_type) {
+                int ctr = 0;
+                // check for type here
+                while (*(array->ribbons + ctr) != 0) {
+                        if(check_same_type(*(array->ribbons + ctr), rb)) {
+                                return false;
+                        }
+                        ++ctr;
+                }
+        }
+
+        *(array->ribbons + array->current_len) = copy_ray_ribbon(rb, true);
+        array->current_len++;
+        // this enforces null termination
+        *(array->ribbons + array->current_len) = 0;
+        return true;
 }
 
 double complex compute_intersection(struct half_infinite_ray *hr,
@@ -525,6 +695,65 @@ bool process_vertical_chain(struct ribbon_node *rn,
         // update pointers
         rn->down = rn_next;
         return process_vertical_chain(rn_next, pr, num_reflections);
+}
+
+bool process_vertical_chain_nomalloc(struct ribbon_node *rn,
+                                     const struct perfect_reflector **pr,
+                                     int num_reflections)
+{
+        // this function computes whether a ray can hit the
+        // destination after a max num_reflections
+        int ctr = 0, ctrindex = -1, num_reflectors = 0;
+        double tmin = INFINITY, sgn = -1;
+
+        const struct perfect_reflector *prsurf = *(pr + ctr);
+        while(prsurf != NULL) {
+                double complex dbl = compute_intersection(rn->current, prsurf);
+                if (creal(dbl) < tmin && ctr != rn->surface_index) {
+                        tmin = creal(dbl);
+                        sgn = cimag(dbl);
+                        ctrindex = ctr;
+                }
+                ctr++;
+                prsurf = *(pr + ctr);
+        }
+        num_reflectors = ctr;
+
+        if (sgn>0 || tmin>1e5) return false;
+        if (ctrindex == num_reflectors - 1) {
+                rn->hit_destination_patch = true;
+                return true;
+        } else {
+                rn->hit_destination_patch = false;
+        }
+
+        if (rn->num_reflections > num_reflections) return false;
+
+        // only case remaining is if there is intersection with
+        // reflector and number of reflections is small
+
+        // update starting point
+        struct ribbon_node *rn_next = rn->down;
+
+        cblas_dcopy(3, rn->current->point, 1,
+                    rn_next->current->point, 1);
+        cblas_daxpy(3, tmin, rn->current->unit_direction, 1,
+                    rn_next->current->point, 1);
+        rn_next->surface_index = ctrindex;
+
+        // update ending point of previous ray
+        cblas_dcopy(3, rn_next->current->point, 1, rn->current->end_pt, 1);
+
+        // next update direction
+        cblas_dcopy(3, rn->current->unit_direction, 1,
+                    rn_next->current->unit_direction, 1);
+        const struct perfect_reflector *prsurface = pr[ctrindex];
+        double factor = -2*cblas_ddot(3, rn->current->unit_direction,
+                                      1, prsurface->unit_normal, 1);
+        cblas_daxpy(3, factor, prsurface->unit_normal, 1,
+                    rn_next->current->unit_direction, 1);
+
+        return process_vertical_chain_nomalloc(rn_next, pr, num_reflections);
 }
 
 void print_ray_ribbon(const struct ray_ribbon *rb)
@@ -799,7 +1028,7 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
         double *ptprev = rx->gn->smm->position;
 
         bool validrayribbon = true;
-        for (ctr = cnt - 1; ctr > 0; ctr--) {
+        for (ctr = cnt - 1; ctr > 0; --ctr) {
                 struct ribbon_node *rn = init_ribbon_node();
                 cblas_dcopy(3, *(virtual_points + ctr), 1,
                             rn->current->point, 1);
@@ -847,6 +1076,7 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                         rn = rn->down;
                         rn->num_reflections = ctr;
                 }
+                rn->hit_destination_patch = true;
                 rbfinal = init_ray_ribbon(rninit);
                 rbfinal->start_gn = tx;
                 rbfinal->end_gn = rx;

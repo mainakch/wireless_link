@@ -95,8 +95,18 @@ void populate_ray_ribbon_array_full(const struct transmitter *tx,
                                     const double complex *angles,
                                     struct ray_ribbon_array *rarr,
                                     bool single_type);
+void populate_ray_ribbon_array_full_copy(const struct transmitter *tx,
+                                    const struct perfect_reflector **ref_arr,
+                                    int num_ref, int num_points,
+                                    const double complex *angles,
+                                    struct ray_ribbon_array *rarr,
+                                    bool single_type);
 struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn);
 struct ribbon_node *init_ribbon_node();
+struct ribbon_node *init_chain_of_ribbon_nodes(int length);
+struct ribbon_node *copy_ribbon_node(const struct ribbon_node *rn);
+struct ribbon_node *copy_ribbon_node_till_dest(const struct ribbon_node *rn);
+struct ray_ribbon *copy_ray_ribbon(const struct ray_ribbon *rb, bool till_dest);
 void destroy_ray_ribbon(struct ray_ribbon *rb);
 void destroy_ray_ribbon_nodes(struct ray_ribbon *rb);
 void destroy_ray_ribbon_array(struct ray_ribbon_array *array);
@@ -108,12 +118,18 @@ bool check_same_type(const struct ray_ribbon *ray_rb1,
                      const struct ray_ribbon *ray_rb2);
 bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb,
                     bool single_type);
+bool add_ray_ribbon_copy(struct ray_ribbon_array *array,
+                         const struct ray_ribbon *rb,
+                         bool single_type);
 double complex compute_intersection(struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr);
 void remove_ribbon_node_duplicates(struct ribbon_node *rn);
 bool process_vertical_chain(struct ribbon_node *rn,
                             const struct perfect_reflector **pr,
                             int num_reflections);
+bool process_vertical_chain_nomalloc(struct ribbon_node *rn,
+                                     const struct perfect_reflector **pr,
+                                     int num_reflections);
 void print_ray_ribbon(const struct ray_ribbon *rb);
 void print_receiver_ray_ribbon(const struct receiver_ray_ribbon *rb);
 void print_ray_ribbon_flattened(const struct ray_ribbon *rb);
