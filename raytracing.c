@@ -13,10 +13,12 @@ struct receiver_ray_ribbon *init_receiver_ray_ribbon(
         // make sure ribbon is not zero
         struct receiver_ray_ribbon *rrbn_new =
                 calloc(1, sizeof(struct receiver_ray_ribbon));
+        const struct perfect_reflector **prconst =
+                (const struct perfect_reflector **) env->prarray;
         rrbn_new->ribbon = refine_ray_ribbon_image(ribbon->start_gn,
                                                    ribbon,
                                                    rx,
-                                                   env->prarray);
+                                                   prconst);
         rrbn_new->start_gn = ribbon->start_gn;
         return rrbn_new;
 }
@@ -64,12 +66,15 @@ bool update_receiver_ray_ribbons(struct receiver *rx,
 
         int ctr = 0;
         struct receiver_ray_ribbon *rrbn = *(rx->rrbn + ctr);
+        const struct perfect_reflector **prconst =
+                (const struct perfect_reflector **) env->prarray;
         while (rrbn != 0) {
+
                 struct ray_ribbon *refined_ribbon = refine_ray_ribbon_image(
                         rrbn->ribbon->start_gn,
                         rrbn->ribbon,
                         rx,
-                        env->prarray);
+                        prconst);
                 if (refined_ribbon != 0) {
                         refined_ribbon->start_gn = rrbn->ribbon->start_gn;
                         refined_ribbon->end_gn = rx;
@@ -539,6 +544,23 @@ void print_ray_ribbon(const struct ray_ribbon *rb)
 
 }
 
+void print_receiver_ray_ribbon(const struct receiver_ray_ribbon *rb)
+{
+        fprintf(stderr, "Printing receiver rayribbon: \n\n");
+        struct ribbon_node *rn = rb->ribbon->head;
+        int ctr = 0;
+        while(rn != NULL) {
+                fprintf(stderr, "Level %d:\n", ctr);
+                print_ribbon_node(rn);
+                rn = rn->down;
+                ctr++;
+        }
+        fprintf(stderr, "Delay doppler for receiver rayribbon are:",
+                "%lf ns; %lf;\n",
+                (10e9) * rb->delay, rb->doppler);
+
+}
+
 void print_ray_ribbon_flattened(const struct ray_ribbon *rb)
 {
         struct ribbon_node *rn = rb->head;
@@ -732,7 +754,7 @@ struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
         /* return generate_nearby_ribbons(tx, ref_arr, num_ref, rb); */
 }
 
-const struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
+struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                            const struct ray_ribbon *rb,
                                            const struct receiver *rx,
                                            const struct perfect_reflector **pr)
@@ -1197,8 +1219,8 @@ void readout_all_signals(struct environment *env, FILE *fpout) {
                 }
 
                 double rx_noise_std = pow(rx->recv_noise_power, 0.5);
-                /* signal += rx_noise_std * */
-                /*         (*(env->unit_power_gaussian_noise + ctr)); */
+                signal += rx_noise_std *
+                        (*(env->unit_power_gaussian_noise + ctr));
                 double real_sig = creal(signal);
                 double imag_sig = cimag(signal);
                 if (fpout != NULL) {
@@ -1208,6 +1230,46 @@ void readout_all_signals(struct environment *env, FILE *fpout) {
                 }
                 ctr++;
                 rba = *(env->env_paths + ctr);
+                rx = (*(env->receivers_array + ctr));
+        }
+}
+
+void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
+        double complex signal;
+        int ctr = 0;
+        struct receiver *rx = (*(env->receivers_array + ctr));
+        while (rx != 0) {
+                signal = 0;
+                int ctr1 = 0;
+                struct receiver_ray_ribbon *rrbn = *(rx->rrbn);
+                while (rrbn != 0) {
+                        rrbn->integrated_doppler_phase = fmod(
+                                (rrbn->integrated_doppler_phase +
+                                 rrbn->doppler * env->delta_time), 1);
+
+                        double phase = 0;
+                        phase += rrbn->integrated_doppler_phase
+                                + rrbn->reflection_phase -
+                                (env->frequency + rrbn->doppler) * rrbn->delay;
+                        signal += rrbn->gain * cexp(2 * PI * phase * I)
+                                * pow(10,
+                                      rrbn->start_gn->gn->tm->power_in_dBm/10)
+                                * rrbn->signal->signal;
+                        ctr1++;
+                        rrbn = *(rx->rrbn + ctr1);
+                }
+
+                double rx_noise_std = pow(rx->recv_noise_power, 0.5);
+                signal += rx_noise_std *
+                        (*(env->unit_power_gaussian_noise + ctr));
+                double real_sig = creal(signal);
+                double imag_sig = cimag(signal);
+                if (fpout != NULL) {
+                        fprintf(fpout, "Time: %lf, receiver: %d, "
+                                "real: %e, imag: %e\n",
+                                env->time, ctr, real_sig, imag_sig);
+                }
+                ctr++;
                 rx = (*(env->receivers_array + ctr));
         }
 }

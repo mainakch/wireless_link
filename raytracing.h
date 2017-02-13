@@ -27,8 +27,8 @@ struct ray_ribbon {
         double integrated_doppler_phase;
         double gain;
         double reflection_phase;
-        struct transmitter *start_gn;
-        struct receiver *end_gn;
+        const struct transmitter *start_gn;
+        const struct receiver *end_gn;
 };
 
 struct ray_ribbon_array {
@@ -48,7 +48,7 @@ struct receiver_ray_ribbon {
         double gain;
         double reflection_phase;
         bool active;
-        struct transmitter *start_gn;
+        const struct transmitter *start_gn;
 };
 
 struct signal_buffer {
@@ -115,6 +115,7 @@ bool process_vertical_chain(struct ribbon_node *rn,
                             const struct perfect_reflector **pr,
                             int num_reflections);
 void print_ray_ribbon(const struct ray_ribbon *rb);
+void print_receiver_ray_ribbon(const struct receiver_ray_ribbon *rb);
 void print_ray_ribbon_flattened(const struct ray_ribbon *rb);
 void print_ray_ribbon_array(const struct ray_ribbon_array *rarr);
 void print_vertical_strip(const struct ribbon_node *rn);
@@ -133,7 +134,7 @@ struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
                                                  perfect_reflector **ref_arr,
                                                  int num_ref,
                                                  const struct ray_ribbon *rb);
-const struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
+struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                      const struct ray_ribbon *rb,
                                      const struct receiver *rx,
                                      const struct perfect_reflector **pr);
@@ -172,5 +173,6 @@ double length_ribbon_node(const struct ribbon_node *rn);
 void reflect(const double *pos1, const double *n1, double *vel, double *pos);
 void reflection_operation(const double *v1, const double *n1, double *vref);
 void readout_all_signals(struct environment *env, FILE *fpout);
+void readout_all_signals_buffer(struct environment *env, FILE *fpout);
 void clear_tx_paths(struct environment *env);
 void clear_env_paths(struct environment *env);
