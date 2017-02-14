@@ -58,6 +58,37 @@ struct signal_buffer {
         double transmit_time;
 };
 
+struct memory_block {
+        size_t size;
+        void *ptr;
+        int sizehash;
+        int ptrhash;
+        struct memory_block *next;
+};
+
+struct memory_register {
+        struct memory_block **malloc_array;
+        // malloc_array contains array from which blocks will be retrieved
+        struct memory_block **free_array;
+        // free_array contains array of blocks which have already been served
+};
+
+void *custom_malloc(size_t size);
+void *custom_calloc(size_t num, size_t size);
+void custom_free(void *ptr);
+unsigned long hash(unsigned char *str);
+unsigned long hash_ptr(void *ptr);
+unsigned long hash_int(size_t num);
+
+struct memory_register *init_memory_register();
+void destroy_memory_register(struct memory_register *mem_reg);
+struct memory_block *init_memory_block(size_t size);
+void destroy_memory_block(struct memory_block *mem_block);
+void *get_or_free_memory(size_t size, void *ptr, int zero_for_get);
+void free_memory(void *ptr, struct memory_register *mem_reg);
+void *malloc_memory(size_t size, struct memory_register *mem_reg);
+void release_all_blocks();
+
 struct receiver_ray_ribbon *init_receiver_ray_ribbon(
         struct receiver *rx,
         struct ray_ribbon *ribbon,
@@ -89,7 +120,7 @@ void populate_ray_ribbon_array_long(struct transmitter *tx,
                                     const double theta_end,
                                     const double theta_delta,
                                     bool single_type);
-void populate_ray_ribbon_array_full(const struct transmitter *tx,
+void populate_ray_ribbon_array_full_malloc(const struct transmitter *tx,
                                     const struct perfect_reflector **ref_arr,
                                     int num_ref, int num_points,
                                     const double complex *angles,
@@ -124,9 +155,6 @@ bool add_ray_ribbon_copy(struct ray_ribbon_array *array,
 double complex compute_intersection(struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr);
 void remove_ribbon_node_duplicates(struct ribbon_node *rn);
-bool process_vertical_chain(struct ribbon_node *rn,
-                            const struct perfect_reflector **pr,
-                            int num_reflections);
 bool process_vertical_chain_nomalloc(struct ribbon_node *rn,
                                      const struct perfect_reflector **pr,
                                      int num_reflections);
@@ -137,29 +165,28 @@ void print_ray_ribbon_array(const struct ray_ribbon_array *rarr);
 void print_vertical_strip(const struct ribbon_node *rn);
 void print_ribbon_node(const struct ribbon_node *rn);
 int count_segments(const struct ribbon_node *rn);
-void compute_average_ribbon_node(struct ribbon_node *rn,
-                                const struct ray_ribbon_array *rba,
-                                double *weights);
 void invert_spherical_angles(const double *unit_vector, double *phi,
                              double *theta);
-void compute_averaging_coefficients(const double *point,
-                                    const struct ray_ribbon_array *rba,
-                                    double *weights);
+
+
 struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
                                                  const struct
                                                  perfect_reflector **ref_arr,
                                                  int num_ref,
                                                  const struct ray_ribbon *rb);
+int count_ribbon_nodes(const struct ribbon_node *rn);
 struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                      const struct ray_ribbon *rb,
                                      const struct receiver *rx,
                                      const struct perfect_reflector **pr);
-struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
-                                     const struct ray_ribbon *rb,
-                                     const struct receiver *rx,
-                                     const struct perfect_reflector **pr);
-bool is_close_ribbon(const struct ray_ribbon *rb, const double *point);
-bool isclose(const struct ribbon_node *rn, const double *point);
+struct ray_ribbon *refine_ray_ribbon_image_inplace(const struct transmitter *tx,
+                                                   struct ray_ribbon *rb,
+                                                   const struct receiver *rx,
+                                                   const struct perfect_reflector
+                                                   **pr);
+
+
+
 long type_ray_ribbon(const struct ray_ribbon *rb);
 struct ribbon_node **vertical_strip_for_points(struct ribbon_node **nodearray,
                                         const double **points,
@@ -192,3 +219,26 @@ void readout_all_signals(struct environment *env, FILE *fpout);
 void readout_all_signals_buffer(struct environment *env, FILE *fpout);
 void clear_tx_paths(struct environment *env);
 void clear_env_paths(struct environment *env);
+
+// Deprecated
+void populate_ray_ribbon_array_full_malloc(const struct transmitter *tx,
+                                    const struct perfect_reflector **ref_arr,
+                                    int num_ref, int num_points,
+                                    const double complex *angles,
+                                    struct ray_ribbon_array *rarr,
+                                    bool single_type);
+bool process_vertical_chain(struct ribbon_node *rn,
+                            const struct perfect_reflector **pr,
+                            int num_reflections);
+struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
+                                     const struct ray_ribbon *rb,
+                                     const struct receiver *rx,
+                                     const struct perfect_reflector **pr);
+bool is_close_ribbon(const struct ray_ribbon *rb, const double *point);
+bool isclose(const struct ribbon_node *rn, const double *point);
+void compute_average_ribbon_node(struct ribbon_node *rn,
+                                const struct ray_ribbon_array *rba,
+                                double *weights);
+void compute_averaging_coefficients(const double *point,
+                                    const struct ray_ribbon_array *rba,
+                                    double *weights);

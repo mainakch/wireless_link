@@ -36,7 +36,7 @@ void test_reflect(void)
         double pos[3] = {2, 3, 1};
         double ref_vel[3] = {-2, -5, -9};
         double ref_pos[3] = {2, 3, -1};
-	double ref_vel_[3] = {-2, 5, -9}; 
+	double ref_vel_[3] = {-2, 5, -9};
 	double ref_pos_[3] = {2, -3, -1};
 
         reflect(pos0, n0, vel, pos);
@@ -56,12 +56,22 @@ void test_reflect(void)
         }
 }
 
+void test_malloc(void)
+{
+        double *num_bytes0 = get_or_free_memory(sizeof(double), 0, 0);
+        get_or_free_memory(0, num_bytes0, 1);
+	double *num_bytes1 = get_or_free_memory(sizeof(double), 0, 0);
+	release_all_blocks();
+        CU_ASSERT_TRUE(num_bytes0 == num_bytes1);
+}
+
 int main()
 {
         CU_initialize_registry();
         struct CU_Suite *suite = CU_add_suite("uniquetest", NULL, NULL);
         CU_add_test(suite, "Test diff", test_diff);
         CU_add_test(suite, "Test reflect", test_reflect);
+        CU_add_test(suite, "Test malloc", test_malloc);
         CU_basic_run_tests();
         CU_cleanup_registry();
 }

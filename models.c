@@ -14,7 +14,7 @@ int id()
 
 struct simulation *init_simulation()
 {
-        struct simulation *sim_not_null = malloc(sizeof(struct simulation));
+        struct simulation *sim_not_null = custom_malloc(sizeof(struct simulation));
         sim_not_null->frequency = 60e9; // 60 Ghz
         sim_not_null->wavelength = C / sim_not_null->frequency;
         sim_not_null->delta_time = 0.1;
@@ -27,14 +27,14 @@ struct simulation *init_simulation()
 
 struct spatial_motion_model *init_spatial_motion_model()
 {
-        struct spatial_motion_model *smm = calloc(1,
+        struct spatial_motion_model *smm = custom_calloc(1,
                 sizeof(struct spatial_motion_model));
         return smm;
 }
 
 struct transmission_model *init_transmission_model()
 {
-        struct transmission_model *tm = malloc(
+        struct transmission_model *tm = custom_malloc(
                 sizeof(struct transmission_model));
         tm->power_in_dBm = -200;
         return tm;
@@ -42,14 +42,14 @@ struct transmission_model *init_transmission_model()
 
 struct propagation_model *init_propagation_model()
 {
-        struct propagation_model *pm = calloc(1,
+        struct propagation_model *pm = custom_calloc(1,
                 sizeof(struct propagation_model));
         return pm;
 }
 
 struct general_node *init_general_node()
 {
-        struct general_node *gn = malloc(sizeof(struct general_node));
+        struct general_node *gn = custom_malloc(sizeof(struct general_node));
         gn->smm = init_spatial_motion_model();
         gn->tm = init_transmission_model();
         gn->id = id();
@@ -58,7 +58,7 @@ struct general_node *init_general_node()
 
 struct transmitter *init_transmitter()
 {
-        struct transmitter *tn = malloc(sizeof(struct transmitter));
+        struct transmitter *tn = custom_malloc(sizeof(struct transmitter));
         tn->gn = init_general_node();
         tn->baseband_signal = 1;
         return tn;
@@ -66,10 +66,10 @@ struct transmitter *init_transmitter()
 
 struct receiver *init_receiver()
 {
-        struct receiver *rc = malloc(sizeof(struct receiver));
+        struct receiver *rc = custom_malloc(sizeof(struct receiver));
         rc->gn = init_general_node();
         rc->recv_noise_power = pow(10, -16);
-        rc->rrbn = calloc(16, sizeof(struct receiver_ray_ribbon *));
+        rc->rrbn = custom_calloc(16, sizeof(struct receiver_ray_ribbon *));
         return rc;
 }
 
@@ -79,7 +79,7 @@ struct perfect_reflector *init_perfect_reflector(const double *normal,
                                          double length, double width)
 {
         struct perfect_reflector *pr =
-                calloc(1, sizeof(struct perfect_reflector));
+                custom_calloc(1, sizeof(struct perfect_reflector));
         double norm = cblas_dnrm2(3, normal, 1);
         cblas_daxpy(3, 1 / norm, normal, 1, pr->unit_normal, 1);
         cblas_dcopy(3, center_point, 1, pr->center_point, 1);
@@ -122,24 +122,24 @@ struct perfect_reflector *init_perfect_reflector_nine_pts_direction(
 
 struct perfect_reflector **init_perfect_reflectorarray(int number)
 {
-        struct perfect_reflector **pr = calloc(number,
+        struct perfect_reflector **pr = custom_calloc(number,
                                         sizeof(struct perfect_reflector *));
         return pr;
 }
 
 struct environment *init_environment()
 {
-        struct environment *env = calloc(1, sizeof(struct environment));
-        env->receivers_array = calloc(MAX_RX + 1, sizeof(struct receiver *));
-        env->transmitters_array = calloc(MAX_TX + 1,
+        struct environment *env = custom_calloc(1, sizeof(struct environment));
+        env->receivers_array = custom_calloc(MAX_RX + 1, sizeof(struct receiver *));
+        env->transmitters_array = custom_calloc(MAX_TX + 1,
                                          sizeof(struct transmitter *));
-        env->node_array = calloc(MAX_TX + MAX_RX + 1,
+        env->node_array = custom_calloc(MAX_TX + MAX_RX + 1,
                                  sizeof(struct general_node *));
-        // env->unit_power_gaussian_noise = calloc(11, sizeof(complex double));
-        env->prarray = calloc(MAX_SURFACES + 2, sizeof(struct perfect_reflector *));
-        env->env_paths = calloc(MAX_RX + 1, sizeof(struct ray_ribbon_array *));
+        // env->unit_power_gaussian_noise = custom_calloc(11, sizeof(complex double));
+        env->prarray = custom_calloc(MAX_SURFACES + 2, sizeof(struct perfect_reflector *));
+        env->env_paths = custom_calloc(MAX_RX + 1, sizeof(struct ray_ribbon_array *));
         // size of env paths is the same as the size of receivers_array
-        env->tx_paths = calloc(MAX_TX + 1, sizeof(struct ray_ribbon_array *));
+        env->tx_paths = custom_calloc(MAX_TX + 1, sizeof(struct ray_ribbon_array *));
         // size of tx paths is the same as the size of transmitters_array
 
         env->sz_array_tx = MAX_TX + 1;
@@ -151,7 +151,7 @@ struct environment *init_environment()
 
 struct file_reader *init_file_reader(const char *input, const char *output)
 {
-        struct file_reader *fr = calloc(1, sizeof(struct file_reader));
+        struct file_reader *fr = custom_calloc(1, sizeof(struct file_reader));
 
         printf("Opening %s for writing \n", output);
         printf("Opening %s for reading \n", input);
@@ -312,35 +312,35 @@ void print_tx_paths(const struct environment *env)
 
 void destroy_spatial_motion_model(struct spatial_motion_model *smm)
 {
-        free(smm);
+        custom_free(smm);
 }
 
 void destroy_simulation(struct simulation *sim)
 {
-        free(sim);
+        custom_free(sim);
 }
 
 void destroy_transmission_model(struct transmission_model *tm)
 {
-        free(tm);
+        custom_free(tm);
 }
 
 void destroy_propagation_model(struct propagation_model *pm)
 {
-        free(pm);
+        custom_free(pm);
 }
 
 void destroy_general_node(struct general_node *gn)
 {
-        free(gn->smm);
-        free(gn->tm);
-        free(gn);
+        custom_free(gn->smm);
+        custom_free(gn->tm);
+        custom_free(gn);
 }
 
 void destroy_transmitter(struct transmitter *tn)
 {
         destroy_general_node(tn->gn);
-        free(tn);
+        custom_free(tn);
 }
 
 void destroy_receiver(struct receiver *rc)
@@ -353,8 +353,8 @@ void destroy_receiver(struct receiver *rc)
                 rrbn = *(rc->rrbn + ctr);
                 ctr++;
         }
-        free(rc->rrbn);
-        free(rc);
+        custom_free(rc->rrbn);
+        custom_free(rc);
 }
 
 void destroy_environment(struct environment *env)
@@ -383,26 +383,26 @@ void destroy_environment(struct environment *env)
                 pr = *(env->prarray + ctr);
         }
 
-        free(env->receivers_array);
-        free(env->transmitters_array);
-        free(env->node_array);
-        free(env->unit_power_gaussian_noise);
-        free(env->prarray);
-        free(env->env_paths);
-        free(env->tx_paths);
-        free(env);
+        custom_free(env->receivers_array);
+        custom_free(env->transmitters_array);
+        custom_free(env->node_array);
+        custom_free(env->unit_power_gaussian_noise);
+        custom_free(env->prarray);
+        custom_free(env->env_paths);
+        custom_free(env->tx_paths);
+        custom_free(env);
 }
 
 void destroy_file_reader(struct file_reader *fr)
 {
         if (fr->infile != NULL)  fclose(fr->infile);
         if (fr->outfile != NULL)  fclose(fr->outfile);
-        free(fr);
+        custom_free(fr);
 }
 
 void destroy_perfect_reflector(struct perfect_reflector *pr)
 {
-        free(pr);
+        custom_free(pr);
 }
 
 void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin)
@@ -412,7 +412,7 @@ void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin)
                 destroy_perfect_reflector(*(pr_begin + ctr));
                 ctr++;
         }
-        free(pr_begin);
+        custom_free(pr_begin);
 }
 
 double _gaussrand() // http://c-faq.com/lib/gaussian.html
@@ -658,7 +658,7 @@ void handle_request(struct environment *env, FILE *fp, const char *req_type)
                 if (!(env->read_in_nodes)) {
                         env->read_in_nodes = 1;
                         env->unit_power_gaussian_noise =
-                                calloc(env->num_receivers + 1,
+                                custom_calloc(env->num_receivers + 1,
                                        sizeof(complex double));
                 }
         } else if (!strcmp(req_type, "Transmittersignal")) {
