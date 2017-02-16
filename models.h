@@ -67,7 +67,7 @@ struct transmitter {
 struct receiver {
         struct general_node *gn;
         double recv_noise_power;
-        struct receiver_ray_ribbon **rrbn;
+        struct receiver_ray_ribbon_ll_node *rlln;
 };
 
 struct perfect_reflector {
@@ -107,6 +107,7 @@ struct environment {
         int sz_array_pr;
 
         bool read_in_nodes;
+        bool updated_tx_paths;
 };
 
 struct file_reader {
@@ -158,7 +159,7 @@ void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin);
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 struct file_reader *parse_input(int argc, char *argv[]);
 void cross_product(const double *v1, const double *v2, double *v3);
-void normalize_unit_vector(double *v1);
+double normalize_unit_vector(double *v1);
 void diff(const double *v1, const double *v2, double *v3);
 int find_len(void **ptr);
 

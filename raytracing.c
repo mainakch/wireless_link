@@ -3,21 +3,19 @@
 void *custom_malloc(size_t size)
 {
         void *tmp = get_or_free_memory(size, 0, 0);
-        fprintf(stdout, "size %zd, %p, %lu, %lu\n", size, tmp, hash_ptr(tmp),
-                hash_int(size));
         return tmp;
 }
 
 void *custom_calloc(size_t num, size_t size)
 {
-        return custom_malloc(num * size);
+        void *tmp = custom_malloc(num * size);
+        memset(tmp, 0, num * size);
+        return tmp;
 }
 
 void custom_free(void *ptr)
 {
-        fprintf(stdout, "- %p, %lu\n", ptr, hash_ptr(ptr));
         get_or_free_memory(0, ptr, 1);
-        /* free(ptr); */
 }
 
 unsigned long hash(unsigned char *str)
@@ -81,7 +79,6 @@ struct memory_block *init_memory_block(size_t size)
         mem_blk->sizehash = (int) hash_int(size);
         mem_blk->ptrhash = (int) hash_ptr(mem_blk->ptr);
         mem_blk->next = 0;
-
         return mem_blk;
 }
 
@@ -111,7 +108,6 @@ void *get_or_free_memory(size_t size, void *ptr, int zero_for_get)
 
         if (zero_for_get == 0) {
                 ptr_n = malloc_memory(size, mem_reg);
-                memset(ptr_n, 0, size);
         }
 
         if (mem_reg != 0 && zero_for_get < 0) {
@@ -122,7 +118,7 @@ void *get_or_free_memory(size_t size, void *ptr, int zero_for_get)
         return ptr_n;
 }
 
-void free_memory(void *ptr, struct memory_register *mem_reg)
+static void free_memory(void *ptr, struct memory_register *mem_reg)
 {
         // find block
         int hash_p = (int) hash_ptr(ptr);
@@ -152,11 +148,10 @@ void free_memory(void *ptr, struct memory_register *mem_reg)
         *(mem_reg->malloc_array + mem_blk->sizehash) = mem_blk;
 }
 
-void *malloc_memory(size_t size, struct memory_register *mem_reg)
+static void *malloc_memory(size_t size, struct memory_register *mem_reg)
 {
         // find block
         int hash_i = (int) hash_int(size);
-        // check this for overflow/underflow to/fro size_t and int
         struct memory_block *mem_blk = *(mem_reg->malloc_array + hash_i);
         struct memory_block *mem_prv = 0;
 
@@ -205,9 +200,16 @@ int counter()
         return ctr++;
 }
 
+struct receiver_ray_ribbon_ll_node *init_receiver_ray_ribbon_ll_node() {
+        struct receiver_ray_ribbon_ll_node *rnll =
+                custom_calloc(1, sizeof(struct receiver_ray_ribbon_ll_node *));
+
+        return rnll;
+}
+
 struct receiver_ray_ribbon *init_receiver_ray_ribbon(
         struct receiver *rx,
-        struct ray_ribbon *ribbon,
+        const struct ray_ribbon *ribbon,
         struct environment *env)
 {
         // make sure ribbon is not zero
@@ -215,19 +217,44 @@ struct receiver_ray_ribbon *init_receiver_ray_ribbon(
                 custom_calloc(1, sizeof(struct receiver_ray_ribbon));
         const struct perfect_reflector **prconst =
                 (const struct perfect_reflector **) env->prarray;
-        rrbn_new->ribbon = refine_ray_ribbon_image(ribbon->start_gn,
+        rrbn_new->ribbon = refine_ray_ribbon_image(ribbon->start_tx,
                                                    ribbon,
                                                    rx,
                                                    prconst);
-        rrbn_new->start_gn = ribbon->start_gn;
+        rrbn_new->start_tx = ribbon->start_tx;
         return rrbn_new;
+}
+
+bool populate_if_ray_ribbon_doesnt_exist
+(const struct ray_ribbon *rb1, struct receiver *rx, struct environment *env) {
+        // if type is the same declare to be the same
+        struct receiver_ray_ribbon_ll_node *rnll = rx->rlln;
+        struct receiver_ray_ribbon_ll_node *rnprev = 0;
+
+        while (rnll != 0) {
+                assert(rnll->rrbn != 0);
+                if (check_same_type(rb1, rnll->rrbn->ribbon)) return false;
+                rnprev = rnll;
+                rnll = rnll->next;
+        }
+
+        // add rb1 to rx
+        if (rnprev == 0) {
+                rx->rlln = init_receiver_ray_ribbon_ll_node();
+                rx->rlln->rrbn = init_receiver_ray_ribbon(rx, rb1, env);
+        } else {
+                rnprev->next = init_receiver_ray_ribbon_ll_node();
+                rnprev->next->rrbn = init_receiver_ray_ribbon(rx, rb1, env);
+        }
+        return true;
 }
 
 void populate_receiver_ray_ribbons(struct environment *env)
 {
-        if (*(env->tx_paths) == 0) {
+        if (*(env->tx_paths) == 0 || env->updated_tx_paths) {
                 return;
         }
+
         int ctrrx = 0;
         struct receiver *rx = *(env->receivers_array + ctrrx);
         while (rx != 0) {
@@ -236,24 +263,35 @@ void populate_receiver_ray_ribbons(struct environment *env)
                 struct ray_ribbon_array *rbnarr = *(env->tx_paths + ctrtx);
                 while (rbnarr != 0) {
                         int ctrp = 0;
-                        struct ray_ribbon *rbn = *(rbnarr->ribbons + ctrp);
+                        struct ray_ribbon *rbn = *(rbnarr->ribbons);
                         while (rbn != 0) {
-                                rbn->start_gn = *(env->transmitters_array
+                                rbn->start_tx = *(env->transmitters_array
                                                   + ctrtx);
-                                *(rx->rrbn + ctrprx) =
-                                        init_receiver_ray_ribbon(rx, rbn, env);
-                                ctrprx++;
-
-
-                                ctrp++;
+                                if (populate_if_ray_ribbon_doesnt_exist(
+                                            rbn, rx, env)) {
+                                }
+                                ++ctrp;
                                 rbn = *(rbnarr->ribbons + ctrp);
                         }
 
-                        ctrtx++;
+                        ++ctrtx;
                         rbnarr = *(env->tx_paths + ctrtx);
                 }
 
-                ctrrx++;
+                ++ctrrx;
+                rx = *(env->receivers_array + ctrrx);
+        }
+        env->updated_tx_paths = false;
+}
+
+void update_all_receiver_ray_ribbons(struct environment *env)
+{
+        int ctrrx = 0;
+        struct receiver *rx = *(env->receivers_array + ctrrx);
+        while (rx != 0) {
+                update_receiver_ray_ribbons(rx, env);
+                update_receiver_ray_ribbons_signal_buffer(rx, env);
+                ++ctrrx;
                 rx = *(env->receivers_array + ctrrx);
         }
 }
@@ -266,44 +304,29 @@ bool update_receiver_ray_ribbons(struct receiver *rx,
         // of the transmitter and the receiver, returns whether the ray ribbon
         // still exists or not
 
-        int ctr = 0;
-        struct receiver_ray_ribbon *rrbn = *(rx->rrbn + ctr);
+        struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
         const struct perfect_reflector **prconst =
                 (const struct perfect_reflector **) env->prarray;
-        while (rrbn != 0) {
-
+        while (rlln != 0) {
                 struct ray_ribbon *refined_ribbon = refine_ray_ribbon_image(
-                        rrbn->ribbon->start_gn,
-                        rrbn->ribbon,
+                        rlln->rrbn->ribbon->start_tx,
+                        rlln->rrbn->ribbon,
                         rx,
                         prconst);
+                destroy_ray_ribbon(rlln->rrbn->ribbon);
                 if (refined_ribbon != 0) {
-                        refined_ribbon->start_gn = rrbn->ribbon->start_gn;
-                        refined_ribbon->end_gn = rx;
-                        destroy_ray_ribbon(rrbn->ribbon);
-                        rrbn->ribbon = refined_ribbon;
-                        update_receiver_ribbon_delay_dopplers(rrbn, env);
-                        rrbn->active = true;
+                        refined_ribbon->start_tx = rlln->rrbn->ribbon->start_tx;
+                        refined_ribbon->end_rx = rx;
+                        rlln->rrbn->ribbon = refined_ribbon;
+                        update_receiver_ribbon_delay_dopplers(rlln->rrbn, env);
                 } else {
-                        rrbn->active = false;
+                        env->updated_tx_paths = false;
+                        rlln->rrbn->ribbon = 0;
                 }
 
-                ++ctr;
-                rrbn = *(rx->rrbn + ctr);
+                rlln = rlln->next;
         }
         return true;
-}
-
-void update_all_receiver_ray_ribbons(struct environment *env)
-{
-        int ctrrx = 0;
-        struct receiver *rx = *(env->receivers_array + ctrrx);
-        while (rx != 0) {
-                update_receiver_ray_ribbons(rx, env);
-                update_receiver_ray_ribbons_signal_buffer(rx, env);
-                ctrrx++;
-                rx = *(env->receivers_array + ctrrx);
-        }
 }
 
 void update_receiver_ray_ribbons_signal_buffer(struct receiver *rx,
@@ -312,42 +335,59 @@ void update_receiver_ray_ribbons_signal_buffer(struct receiver *rx,
         // this function updates the buffer just before readout and removes
         // all outdated signals
 
-        // add code here to remove inactive receiver ray ribbons
-
         // code to update buffers
-        int ctr = 0;
-        struct receiver_ray_ribbon *rrbn = *(rx->rrbn + ctr);
-        while (rrbn != 0) {
+        struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
+        while (rlln != 0) {
                 // add current signal first
-                struct signal_buffer *signal = rrbn->signal;
+                struct signal_buffer *signal = rlln->rrbn->signal;
                 if (signal == 0) {
                         signal = init_signal_buffer();
-                        assert(rrbn->start_gn != 0);
-                        signal->signal = rrbn->start_gn->baseband_signal;
+                        assert(rlln->rrbn->start_tx != 0);
+                        signal->signal = rlln->rrbn->start_tx->baseband_signal;
                         signal->transmit_time = env->time;
-                        rrbn->signal = signal;
+                        signal->delay = rlln->rrbn->delay;
+                        rlln->rrbn->signal = signal;
                 } else {
                         while(signal->next != 0) {
                                 signal = signal->next;
                         }
 
-                        if (rrbn->active) {
+                        if (rlln->rrbn->ribbon != 0) {
                                 signal->next = init_signal_buffer();
+                                signal->next->delay = rlln->rrbn->delay;
                                 signal->next->signal =
-                                        rrbn->start_gn->baseband_signal;
+                                        rlln->rrbn->start_tx->baseband_signal;
                                 signal->next->transmit_time = env->time;
                         }
                 }
 
-                while (rrbn->signal != 0 && rrbn->signal->next != 0 &&
-                       rrbn->signal->next->transmit_time
-                       + rrbn->delay < env->time) {
-                        rrbn->signal = destroy_signal_buffer_first(rrbn->signal);
+                // remove signal if there are newer signals in the buffer
+                while (rlln->rrbn->signal != 0 && rlln->rrbn->signal->next != 0
+                       && rlln->rrbn->signal->next->transmit_time
+                       + rlln->rrbn->signal->next->delay < env->time) {
+                        rlln->rrbn->signal =
+                                destroy_signal_buffer_first(rlln->rrbn->signal);
                 }
 
-                ++ctr;
-                rrbn = *(rx->rrbn + ctr);
+                if (rlln->rrbn->ribbon == 0 && rlln->rrbn->signal->next == 0 &&
+                    rlln->rrbn->signal->receiver_read &&
+                    rlln->rrbn->signal->transmit_time
+                       + rlln->rrbn->signal->delay +
+                    env->delta_time < env->time) {
+                        struct receiver_ray_ribbon_ll_node *rllnp = rlln;
+                        rlln = rlln->next;
+                        destroy_receiver_ray_ribbon_ll_node(rllnp);
+
+                } else {
+                        rlln = rlln->next;
+                }
         }
+}
+
+void destroy_receiver_ray_ribbon_ll_node(struct receiver_ray_ribbon_ll_node *p)
+{
+        destroy_receiver_ray_ribbon(p->rrbn);
+        custom_free(p);
 }
 
 void destroy_receiver_ray_ribbon(struct receiver_ray_ribbon *rrbn)
@@ -361,7 +401,8 @@ void destroy_receiver_ray_ribbon(struct receiver_ray_ribbon *rrbn)
 
 struct signal_buffer *init_signal_buffer()
 {
-        struct signal_buffer *sgn = custom_calloc(1, sizeof(struct signal_buffer));
+        struct signal_buffer *sgn =
+                custom_calloc(1, sizeof(struct signal_buffer));
         return sgn;
 }
 
@@ -445,12 +486,11 @@ void populate_ray_ribbon_array_full_copy(const struct transmitter *tx,
 
         struct ribbon_node *rn = init_chain_of_ribbon_nodes(6);
         struct ray_ribbon *rb = init_ray_ribbon(rn);
-        rb->start_gn = tx;
+        rb->start_tx = tx;
 
         for (ctr = 0; ctr < num_points; ++ctr) {
                 phi = creal(*(angles + ctr));
                 theta = cimag(*(angles + ctr));
-                // struct ribbon_node *rn = init_ribbon_node();
                 cblas_dcopy(3, tx->gn->smm->position, 1,
                             rn->current->point, 1);
                 double direction[3] = {cos(phi),
@@ -485,6 +525,31 @@ struct ribbon_node *init_ribbon_node()
         return rn;
 }
 
+struct ribbon_node *init_ribbon_node_from_copy(const struct ribbon_node *rn)
+{
+        struct ribbon_node *rn_tmp = init_ribbon_node();
+        rn_tmp->hit_destination_patch = rn->hit_destination_patch;
+        rn_tmp->num_reflections = rn->num_reflections;
+        rn_tmp->ctr = rn->ctr;
+        rn_tmp->surface_index = rn->surface_index;
+        *(rn_tmp->current) = *(rn->current);
+        return rn_tmp;
+}
+
+struct ribbon_node *init_ribbon_node_from_points(const double *pt1,
+                                                 const double *pt2)
+{
+        struct ribbon_node *rn_tmp = init_ribbon_node();
+        cblas_dcopy(3, pt1, 1, rn_tmp->current->point, 1);
+        cblas_dcopy(3, pt2, 1, rn_tmp->current->end_pt, 1);
+
+        double diff_v[3];
+        diff(pt1, pt2, diff_v);
+        rn_tmp->current->length = normalize_unit_vector(diff_v);
+        cblas_dcopy(3, diff_v, 1, rn_tmp->current->unit_direction, 1);
+        return rn_tmp;
+}
+
 struct ribbon_node *init_chain_of_ribbon_nodes(int length_of_node)
 {
         int ctr = 0;
@@ -510,7 +575,7 @@ struct ribbon_node *init_chain_of_ribbon_nodes(int length_of_node)
         return rn;
 }
 
-struct ribbon_node *copy_ribbon_node(const struct ribbon_node *rn)
+struct ribbon_node *copy_chain_of_ribbon_nodes(const struct ribbon_node *rn)
 {
         struct ribbon_node *rn_new = 0;
         struct ribbon_node *rn_tmp = 0;
@@ -535,7 +600,7 @@ struct ribbon_node *copy_ribbon_node(const struct ribbon_node *rn)
         return rn_new;
 }
 
-struct ribbon_node *copy_ribbon_node_till_dest(const struct ribbon_node *rn)
+struct ribbon_node *copy_chain_of_ribbon_nodes_till_dest(const struct ribbon_node *rn)
 {
         struct ribbon_node *rn_new = 0;
         struct ribbon_node *rn_tmp = 0;
@@ -566,12 +631,12 @@ struct ray_ribbon *copy_ray_ribbon(const struct ray_ribbon *rb, bool till_dest)
 {
         struct ray_ribbon *rbnew = custom_malloc(sizeof(struct ray_ribbon));
         if (till_dest) {
-                rbnew->head = copy_ribbon_node_till_dest(rb->head);
+                rbnew->head = copy_chain_of_ribbon_nodes_till_dest(rb->head);
         } else {
-                rbnew->head = copy_ribbon_node(rb->head);
+                rbnew->head = copy_chain_of_ribbon_nodes(rb->head);
         }
-        rbnew->start_gn = rb->start_gn;
-        rbnew->end_gn = rb->end_gn;
+        rbnew->start_tx = rb->start_tx;
+        rbnew->end_rx = rb->end_rx;
         rbnew->delay = rb->delay;
         rbnew->doppler = rb->doppler;
         rbnew->integrated_doppler_phase = rb->integrated_doppler_phase;
@@ -655,7 +720,7 @@ bool check_same_type(const struct ray_ribbon *ray_rb1,
         struct ribbon_node *rn1 = ray_rb1->head;
         struct ribbon_node *rn2 = ray_rb2->head;
         // same type if same transmitter and same reflectors
-        if (ray_rb1->start_gn != ray_rb2->start_gn) return false;
+        if (ray_rb1->start_tx != ray_rb2->start_tx) return false;
 
         bool hit1, hit2;
 
@@ -735,7 +800,7 @@ bool add_ray_ribbon_copy(struct ray_ribbon_array *array,
         return true;
 }
 
-double complex compute_intersection(struct half_infinite_ray *hr,
+double complex compute_intersection(const struct half_infinite_ray *hr,
                                     const struct perfect_reflector *pr)
 {
         double t, sgn;
@@ -768,34 +833,8 @@ double complex compute_intersection(struct half_infinite_ray *hr,
                 }
         }
 
-        if (t < 1e5) {
-                cblas_dcopy(3, hr->point, 1, hr->end_pt, 1);
-                cblas_daxpy(3, t, hr->unit_direction, 1, hr->end_pt, 1);
-        }
-
         sgn = cblas_ddot(3, hr->unit_direction, 1, pr->unit_normal, 1);
         return t + I * sgn; // if sgn positive then ray is blocked
-}
-void remove_ribbon_node_duplicates(struct ribbon_node *rn) {
-        struct ribbon_node *rn_orig = rn;
-        struct ribbon_node *rn_tmp;
-        while (rn != NULL) {
-                if ((rn->down != NULL) &&
-                    (length_ribbon_node(rn->down) < 1e-4)) {
-                        rn_tmp = rn->down;
-                        rn->down = rn->down->down;
-                        destroy_ribbon_node(rn_tmp);
-                }
-                rn = rn->down;
-        }
-        // update num_reflections
-        rn = rn_orig;
-        int ctr = 0;
-        while (rn != NULL) {
-                rn->num_reflections = ctr;
-                ++ctr;
-                rn = rn->down;
-        }
 }
 
 bool process_vertical_chain_nomalloc(struct ribbon_node *rn,
@@ -810,6 +849,7 @@ bool process_vertical_chain_nomalloc(struct ribbon_node *rn,
         const struct perfect_reflector *prsurf = *(pr + ctr);
         while(prsurf != NULL) {
                 double complex dbl = compute_intersection(rn->current, prsurf);
+                rn->current->length = creal(dbl);
                 if (creal(dbl) < tmin && ctr != rn->surface_index) {
                         tmin = creal(dbl);
                         sgn = cimag(dbl);
@@ -876,6 +916,7 @@ void print_ray_ribbon(const struct ray_ribbon *rb)
 void print_receiver_ray_ribbon(const struct receiver_ray_ribbon *rb)
 {
         fprintf(stderr, "Printing receiver rayribbon: \n\n");
+        assert(rb->ribbon);
         struct ribbon_node *rn = rb->ribbon->head;
         int ctr = 0;
         while(rn != NULL) {
@@ -901,11 +942,6 @@ void print_ray_ribbon_flattened(const struct ray_ribbon *rb)
                         rn->current->point[2], rn->current->end_pt[0],
                         rn->current->end_pt[1], rn->current->end_pt[2]);
                 fprintf(stderr, "Surface index: %d; ", rn->surface_index);
-                /*  else { */
-                /*         fprintf(stderr, " -- (%lf, %lf, %lf) ", */
-                /*                 rn->current->end_pt[0], */
-                /*                 rn->current->end_pt[1], rn->current->end_pt[2]); */
-                /* } */
                 rn = rn->down;
                 ++ctr;
         }
@@ -1020,11 +1056,6 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
 {
         // first count number of reflectors
         int cnt = count_ribbon_nodes(rb->head);
-        /* struct ribbon_node *rn = rb->head; */
-        /* while (rn != 0) { */
-        /*         cnt++; */
-        /*         rn = rn->down; */
-        /* } */
 
         // allocate addresses for virtual points
         double **virtual_points = custom_malloc(cnt * sizeof(double *));
@@ -1060,27 +1091,22 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
 
         bool validrayribbon = true;
         for (ctr = cnt - 1; ctr > 0; --ctr) {
-                struct ribbon_node *rn = init_ribbon_node();
-                cblas_dcopy(3, *(virtual_points + ctr), 1,
-                            rn->current->point, 1);
-                cblas_dcopy(3, ptprev, 1, rn->current->end_pt, 1);
-
-                double diff_v[3];
-                diff(rn->current->point, rn->current->end_pt, diff_v);
-                normalize_unit_vector(diff_v);
-                cblas_dcopy(3, diff_v, 1, rn->current->unit_direction, 1);
+                struct ribbon_node *rn = init_ribbon_node_from_points(
+                        *(virtual_points + ctr), ptprev);
                 rn->surface_index = (*(rnnodes + ctr))->surface_index;
                 rn->num_reflections = (*(rnnodes + ctr))->num_reflections;
 
                 double complex tsgn = compute_intersection(
                         rn->current, *(prref + ctr - 1));
+                rn->current->length = creal(tsgn);
                 cblas_dcopy(3, ptprev, 1, rn->current->end_pt, 1);
 
                 if (creal(tsgn) > 1e5) {
                         validrayribbon = false;
                         ctr = 0;
                 } else {
-                        cblas_daxpy(3, tsgn, diff_v, 1, rn->current->point, 1);
+                        cblas_daxpy(3, tsgn, rn->current->unit_direction,
+                                    1, rn->current->point, 1);
                         *(rnnodes + ctr) = rn;
                         ptprev = rn->current->point;
                 }
@@ -1090,15 +1116,10 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
         struct ray_ribbon *rbfinal = 0;
         if (validrayribbon) {
                 // construct ray ribbon
-                struct ribbon_node *rn = init_ribbon_node();
+                struct ribbon_node *rn =
+                        init_ribbon_node_from_points(tx->gn->smm->position,
+                                                     ptprev); // init_ribbon_node();
                 struct ribbon_node *rninit = rn;
-                cblas_dcopy(3, tx->gn->smm->position, 1, rn->current->point, 1);
-                cblas_dcopy(3, ptprev, 1, rn->current->end_pt, 1);
-
-                double diff_v[3];
-                diff(rn->current->point, rn->current->end_pt, diff_v);
-                normalize_unit_vector(diff_v);
-                cblas_dcopy(3, diff_v, 1, rn->current->unit_direction, 1);
                 rn->surface_index = -1;
                 rn->num_reflections = 0;
 
@@ -1109,8 +1130,8 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                 }
                 rn->hit_destination_patch = true;
                 rbfinal = init_ray_ribbon(rninit);
-                rbfinal->start_gn = tx;
-                rbfinal->end_gn = rx;
+                rbfinal->start_tx = tx;
+                rbfinal->end_rx = rx;
         }
 
         // destroy temp
@@ -1134,113 +1155,6 @@ int count_ribbon_nodes(const struct ribbon_node *rn)
                 rn = rn->down;
         }
         return cnt;
-}
-
-struct ray_ribbon *refine_ray_ribbon_image_inplace(const struct transmitter *tx,
-                                                   struct ray_ribbon *rb,
-                                                   const struct receiver *rx,
-                                                   const struct perfect_reflector
-                                                   **pr)
-{
-        // first count number of reflectors
-        int cnt = count_ribbon_nodes(rb->head);
-
-        // allocate addresses for virtual points
-        double **virtual_points = custom_malloc(cnt * sizeof(double *));
-        double *zero_pt = custom_calloc(3, sizeof(double));
-        struct ribbon_node **rnnodes = custom_calloc(cnt,
-                                              sizeof(struct ribbon_node *));
-        const struct perfect_reflector **prref = custom_calloc(
-                cnt - 1, sizeof(struct perfect_reflector *));
-
-        int ctr = 0;
-        *virtual_points = custom_malloc(3 * sizeof(double));
-        cblas_dcopy(3, tx->gn->smm->position, 1, *(virtual_points), 1);
-
-        // compute reflected points
-        struct ribbon_node *rn = rb->head;
-
-        for (ctr = 0; ctr < cnt - 1; ++ctr) {
-                *(rnnodes + ctr) = rn;
-                *(virtual_points + ctr + 1) = custom_malloc(3 * sizeof(double));
-                cblas_dcopy(3, *(virtual_points + ctr), 1,
-                            *(virtual_points + ctr + 1), 1);
-                int st_in = rn->down->surface_index;
-                const struct perfect_reflector *prr = *(pr + st_in);
-                *(prref + ctr) = prr;
-                reflect(prr->center_point, prr->unit_normal, zero_pt,
-                        *(virtual_points + ctr + 1));
-                rn = rn->down;
-        }
-        *(rnnodes + ctr) = rn;
-
-        // now work backwards to get points of intersection
-        double *ptprev = rx->gn->smm->position;
-
-        bool validrayribbon = true;
-        for (ctr = cnt - 1; ctr > 0; --ctr) {
-                struct ribbon_node *rn = init_ribbon_node();
-                cblas_dcopy(3, *(virtual_points + ctr), 1,
-                            rn->current->point, 1);
-                cblas_dcopy(3, ptprev, 1, rn->current->end_pt, 1);
-
-                double diff_v[3];
-                diff(rn->current->point, rn->current->end_pt, diff_v);
-                normalize_unit_vector(diff_v);
-                cblas_dcopy(3, diff_v, 1, rn->current->unit_direction, 1);
-                rn->surface_index = (*(rnnodes + ctr))->surface_index;
-                rn->num_reflections = (*(rnnodes + ctr))->num_reflections;
-
-                double complex tsgn = compute_intersection(
-                        rn->current, *(prref + ctr - 1));
-                cblas_dcopy(3, ptprev, 1, rn->current->end_pt, 1);
-
-                if (creal(tsgn) > 1e5) {
-                        validrayribbon = false;
-                        ctr = 0;
-                } else {
-                        cblas_daxpy(3, tsgn, diff_v, 1, rn->current->point, 1);
-                        *(rnnodes + ctr) = rn;
-                        ptprev = rn->current->point;
-                }
-        }
-
-        // construct final ray ribbon
-        struct ray_ribbon *rbfinal = 0;
-        if (validrayribbon) {
-                // construct ray ribbon
-                struct ribbon_node *rn = init_ribbon_node();
-                struct ribbon_node *rninit = rn;
-                cblas_dcopy(3, tx->gn->smm->position, 1, rn->current->point, 1);
-                cblas_dcopy(3, ptprev, 1, rn->current->end_pt, 1);
-
-                double diff_v[3];
-                diff(rn->current->point, rn->current->end_pt, diff_v);
-                normalize_unit_vector(diff_v);
-                cblas_dcopy(3, diff_v, 1, rn->current->unit_direction, 1);
-                rn->surface_index = -1;
-                rn->num_reflections = 0;
-
-                for (ctr = 1; ctr < cnt; ++ctr) {
-                        rn->down = *(rnnodes + ctr);
-                        rn = rn->down;
-                        rn->num_reflections = ctr;
-                }
-                rn->hit_destination_patch = true;
-                rbfinal = init_ray_ribbon(rninit);
-                rbfinal->start_gn = tx;
-                rbfinal->end_gn = rx;
-        }
-
-        // destroy temp
-        for (ctr = 0; ctr < cnt; ++ctr) {
-                custom_free(*(virtual_points + ctr));
-        }
-        custom_free(virtual_points);
-        custom_free(prref);
-        custom_free(rnnodes);
-        custom_free(zero_pt);
-        return rbfinal;
 }
 
 long type_ray_ribbon(const struct ray_ribbon *rb)
@@ -1287,6 +1201,7 @@ struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb)
 
 void populate_tx_paths(struct environment *env)
 {
+        if (env->updated_tx_paths) return;
         int ctr = 0;
         clear_tx_paths(env);
         add_receiver_patch(env, 10);
@@ -1312,7 +1227,6 @@ void populate_tx_paths(struct environment *env)
                                     true);
                 *(env->tx_paths + ctr) = rb_arr;
                 ++ctr;
-                //*(env->tx_paths + ctr) = 0;
                 tx = *(env->transmitters_array + ctr);
         }
 
@@ -1398,26 +1312,6 @@ void update_env_paths_delay_dopplers(struct environment *env) {
         }
 }
 
-void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
-                                  const struct environment *env) {
-        if (rb == 0) return;
-        // compute delay
-        double dist = 0;
-        rb->reflection_phase = -1;
-        struct ribbon_node *rn = rb->head;
-        while (rn != NULL) {
-                dist += length_ribbon_node(rn);
-                rn = rn->down;
-                rb->reflection_phase++;
-        }
-        rb->delay = dist/C;
-        // free space path loss
-        rb->gain = 1 / (4 * PI * dist / env->wavelength);
-
-        // compute doppler
-        rb->doppler = compute_doppler(rb, env);
-}
-
 void update_receiver_ribbon_delay_dopplers(struct receiver_ray_ribbon *rb,
                                   const struct environment *env) {
         if (rb == 0) return;
@@ -1445,8 +1339,8 @@ double compute_doppler(const struct ray_ribbon *rb,
         double src_pos[3];
         double src_vel[3];
 
-        cblas_dcopy(3, rb->start_gn->gn->smm->position, 1, src_pos, 1);
-        cblas_dcopy(3, rb->start_gn->gn->smm->velocity, 1, src_vel, 1);
+        cblas_dcopy(3, rb->start_tx->gn->smm->position, 1, src_pos, 1);
+        cblas_dcopy(3, rb->start_tx->gn->smm->velocity, 1, src_vel, 1);
 
         while (rn != NULL) {
                 pr = *(env->prarray + rn->surface_index);
@@ -1456,9 +1350,9 @@ double compute_doppler(const struct ray_ribbon *rb,
         double rel_pos[3];
         double rel_vel[3];
         diff(src_pos,
-             rb->end_gn->gn->smm->position, rel_pos);
+             rb->end_rx->gn->smm->position, rel_pos);
         diff(src_vel,
-             rb->end_gn->gn->smm->velocity, rel_vel);
+             rb->end_rx->gn->smm->velocity, rel_vel);
         double tmp = cblas_dnrm2(3, rel_pos, 1);
         return -cblas_ddot(3, rel_vel, 1, rel_pos, 1) / tmp / env->wavelength;
 }
@@ -1491,6 +1385,14 @@ void reflection_operation(const double *v1, const double *n1, double *vref) {
 }
 
 void readout_all_signals(struct environment *env, FILE *fpout) {
+        static bool first_call = true;
+        if (first_call) {
+                first_call = false;
+                if (fpout != NULL) {
+                        fprintf(fpout, "time\treceiver\t"
+                                "real\timag\n");
+                }
+        }
         double complex signal;
         struct ray_ribbon_array *rba;
         int ctr = 0;
@@ -1511,8 +1413,8 @@ void readout_all_signals(struct environment *env, FILE *fpout) {
                                 + rb->reflection_phase -
                                 (env->frequency + rb->doppler) * rb->delay;
                         signal += rb->gain * cexp(2 * PI * phase * I)
-                                * pow(10, rb->start_gn->gn->tm->power_in_dBm/10)
-                                * rb->start_gn->baseband_signal;
+                                * pow(10, rb->start_tx->gn->tm->power_in_dBm/10)
+                                * rb->start_tx->baseband_signal;
                         ctr1++;
                         rb = *(rba->ribbons + ctr1);
                 }
@@ -1523,8 +1425,8 @@ void readout_all_signals(struct environment *env, FILE *fpout) {
                 double real_sig = creal(signal);
                 double imag_sig = cimag(signal);
                 if (fpout != NULL) {
-                        fprintf(fpout, "Time: %lf, receiver: %d, "
-                                "real: %e, imag: %e\n",
+                        fprintf(fpout, "%lf\t%d\t"
+                                "%e\t%e\n",
                                 env->time, ctr, real_sig, imag_sig);
                 }
                 ++ctr;
@@ -1534,14 +1436,24 @@ void readout_all_signals(struct environment *env, FILE *fpout) {
 }
 
 void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
+        static bool first_call = true;
+        if (first_call) {
+                first_call = false;
+                if (fpout != NULL) {
+                        fprintf(fpout, "time\treceiver\t"
+                                "real\timag\n");
+                }
+        }
+
         double complex signal;
         int ctr = 0;
         struct receiver *rx = (*(env->receivers_array + ctr));
         while (rx != 0) {
                 signal = 0;
                 int ctr1 = 0;
-                struct receiver_ray_ribbon *rrbn = *(rx->rrbn);
-                while (rrbn != 0) {
+                struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
+                while (rlln != 0) {
+                        struct receiver_ray_ribbon *rrbn = rlln->rrbn;
                         rrbn->integrated_doppler_phase = fmod(
                                 (rrbn->integrated_doppler_phase +
                                  rrbn->doppler * env->delta_time), 1);
@@ -1549,13 +1461,14 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                         double phase = 0;
                         phase += rrbn->integrated_doppler_phase
                                 + rrbn->reflection_phase -
-                                (env->frequency + rrbn->doppler) * rrbn->delay;
+                                (env->frequency + rrbn->doppler) *
+                                rrbn->signal->delay;
                         signal += rrbn->gain * cexp(2 * PI * phase * I)
                                 * pow(10,
-                                      rrbn->start_gn->gn->tm->power_in_dBm/10)
+                                      rrbn->start_tx->gn->tm->power_in_dBm/10)
                                 * rrbn->signal->signal;
-                        ctr1++;
-                        rrbn = *(rx->rrbn + ctr1);
+                        rrbn->signal->receiver_read = true;
+                        rlln = rlln->next;
                 }
 
                 double rx_noise_std = pow(rx->recv_noise_power, 0.5);
@@ -1564,8 +1477,8 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                 double real_sig = creal(signal);
                 double imag_sig = cimag(signal);
                 if (fpout != NULL) {
-                        fprintf(fpout, "Time: %lf, receiver: %d, "
-                                "real: %e, imag: %e\n",
+                        fprintf(fpout, "%lf\t%d"
+                                "\t%e\t%e\n",
                                 env->time, ctr, real_sig, imag_sig);
                 }
                 ++ctr;
@@ -1593,8 +1506,9 @@ void clear_env_paths(struct environment *env) {
         }
 }
 
-// Deprecated
+// Deprecated functions
 
+// deprecated
 void populate_ray_ribbon_array_full_malloc(const struct transmitter *tx,
                                     const struct perfect_reflector **ref_arr,
                                     int num_ref, int num_points,
@@ -1621,7 +1535,7 @@ void populate_ray_ribbon_array_full_malloc(const struct transmitter *tx,
                                                       num_ref);
                 if (hit_des) {
                         struct ray_ribbon *rb = init_ray_ribbon(rn);
-                        rb->start_gn = tx;
+                        rb->start_tx = tx;
                         bool ribbon_added = add_ray_ribbon(rarr, rb,
                                                            single_type);
                         if (!ribbon_added) destroy_ray_ribbon(rb);
@@ -1632,6 +1546,7 @@ void populate_ray_ribbon_array_full_malloc(const struct transmitter *tx,
         }
 }
 
+// deprecated
 bool process_vertical_chain(struct ribbon_node *rn,
                             const struct perfect_reflector **pr,
                             int num_reflections)
@@ -1644,6 +1559,7 @@ bool process_vertical_chain(struct ribbon_node *rn,
         const struct perfect_reflector *prsurf = *(pr + ctr);
         while(prsurf != NULL) {
                 double complex dbl = compute_intersection(rn->current, prsurf);
+                rn->current->length = creal(dbl);
                 if (creal(dbl) < tmin && ctr != rn->surface_index) {
                         tmin = creal(dbl);
                         sgn = cimag(dbl);
@@ -1695,7 +1611,8 @@ bool process_vertical_chain(struct ribbon_node *rn,
         return process_vertical_chain(rn_next, pr, num_reflections);
 }
 
-struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
+// deprecated
+struct ray_ribbon *refine_ray_image_ribbon(const struct transmitter *tx,
                                      const struct ray_ribbon *rb,
                                      const struct receiver *rx,
                                      const struct perfect_reflector **pr)
@@ -1743,8 +1660,8 @@ struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
 
         destroy_ray_ribbon_array_all_but_first(node_array_mod);
         if (ctr < 100) {
-                rbn->start_gn = tx;
-                rbn->end_gn = rx;
+                rbn->start_tx = tx;
+                rbn->end_rx = rx;
                 return rbn;
         } else {
                 fprintf(stderr, "Ray did not converge!\n");
@@ -1754,11 +1671,13 @@ struct ray_ribbon *refine_ray_ribbon(const struct transmitter *tx,
         // return 0 if ray ribbon does not converge
 }
 
+// deprecated
 bool is_close_ribbon(const struct ray_ribbon *rb, const double *point)
 {
         return isclose(rb->head, point);
 }
 
+// deprecated
 bool isclose(const struct ribbon_node *rn, const double *point)
 {
         double diff[3];
@@ -1771,6 +1690,7 @@ bool isclose(const struct ribbon_node *rn, const double *point)
         return false;
 }
 
+// deprecated
 void compute_average_ribbon_node(struct ribbon_node *rn,
                                 const struct ray_ribbon_array *rba,
                                 double *weights)
@@ -1797,6 +1717,7 @@ void compute_average_ribbon_node(struct ribbon_node *rn,
                     rn->current->point, 1);
 }
 
+// deprecated
 void compute_averaging_coefficients(const double *point,
                                     const struct ray_ribbon_array *rba,
                                     double *weights)
@@ -1839,4 +1760,48 @@ void compute_averaging_coefficients(const double *point,
         gsl_vector_free(b);
         gsl_vector_free(tau);
         gsl_vector_free(residual);
+}
+
+// deprecated
+void remove_ribbon_node_duplicates(struct ribbon_node *rn) {
+        struct ribbon_node *rn_orig = rn;
+        struct ribbon_node *rn_tmp;
+        while (rn != NULL) {
+                if ((rn->down != NULL) &&
+                    (length_ribbon_node(rn->down) < 1e-4)) {
+                        rn_tmp = rn->down;
+                        rn->down = rn->down->down;
+                        destroy_ribbon_node(rn_tmp);
+                }
+                rn = rn->down;
+        }
+        // update num_reflections
+        rn = rn_orig;
+        int ctr = 0;
+        while (rn != NULL) {
+                rn->num_reflections = ctr;
+                ++ctr;
+                rn = rn->down;
+        }
+}
+
+// deprecated
+void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
+                                  const struct environment *env) {
+        if (rb == 0) return;
+        // compute delay
+        double dist = 0;
+        rb->reflection_phase = -1;
+        struct ribbon_node *rn = rb->head;
+        while (rn != NULL) {
+                dist += length_ribbon_node(rn);
+                rn = rn->down;
+                rb->reflection_phase++;
+        }
+        rb->delay = dist/C;
+        // free space path loss
+        rb->gain = 1 / (4 * PI * dist / env->wavelength);
+
+        // compute doppler
+        rb->doppler = compute_doppler(rb, env);
 }

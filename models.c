@@ -69,7 +69,7 @@ struct receiver *init_receiver()
         struct receiver *rc = custom_malloc(sizeof(struct receiver));
         rc->gn = init_general_node();
         rc->recv_noise_power = pow(10, -16);
-        rc->rrbn = custom_calloc(16, sizeof(struct receiver_ray_ribbon *));
+        rc->rlln = 0;//custom_calloc(16, sizeof(struct receiver_ray_ribbon *));
         return rc;
 }
 
@@ -146,6 +146,7 @@ struct environment *init_environment()
         env->sz_array_rx = MAX_RX + 1;
         env->sz_array_gn = MAX_TX + MAX_RX + 1;
         env->sz_array_pr = MAX_SURFACES + 2;
+        env->updated_tx_paths = false;
         return env;
 }
 
@@ -346,14 +347,13 @@ void destroy_transmitter(struct transmitter *tn)
 void destroy_receiver(struct receiver *rc)
 {
         destroy_general_node(rc->gn);
-        struct receiver_ray_ribbon *rrbn = *(rc->rrbn);
+        struct receiver_ray_ribbon_ll_node *rlln = rc->rlln;
         int ctr = 1;
-        while (rrbn != 0) {
-                destroy_receiver_ray_ribbon(rrbn);
-                rrbn = *(rc->rrbn + ctr);
-                ctr++;
+        while (rlln != 0) {
+                struct receiver_ray_ribbon_ll_node *rll = rlln->next;
+                destroy_receiver_ray_ribbon_ll_node(rlln);
+                rlln = rll;
         }
-        custom_free(rc->rrbn);
         custom_free(rc);
 }
 
@@ -478,10 +478,11 @@ void cross_product(const double *v1, const double *v2, double *v3)
         v3[2] = v1[0] * v2[1] - v1[1] * v2[0];
 }
 
-void normalize_unit_vector(double *v1)
+double normalize_unit_vector(double *v1)
 {
         double normv1 =  cblas_dnrm2(3, v1, 1);
         cblas_dscal(3, 1/normv1, v1, 1);
+        return normv1;
 }
 
 void diff(const double *v1, const double *v2, double *v3)
