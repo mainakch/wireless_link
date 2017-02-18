@@ -1482,7 +1482,7 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                                 env->time, ctr, real_sig, imag_sig);
                 }
                 ++ctr;
-                rx = (*(env->receivers_array + ctr));
+                rx = *(env->receivers_array + ctr);
         }
 }
 

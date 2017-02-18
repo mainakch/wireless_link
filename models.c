@@ -652,11 +652,12 @@ bool update_environment_from_file_sim(struct simulation *sim)
         while (fscanf(fp, fmt, buff) != EOF) {
                 eofflag = false;
                 error_flag |= handle_request(env, fp, buff);
-                if (strcmp(buff, "End") == 0) break;
+                if (strcmp(buff, "End") == 0 || error_flag) break;
         }
 
         if (error_flag) {
-                fprintf(stderr, "Error in file syntax.  Exiting.\n");
+                fprintf(stderr, "Error in file syntax while reading token "
+                        "%s.  Exiting.\n", buff);
                 destroy_simulation(sim);
                 exit(1);
         }
@@ -734,7 +735,8 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
         } else if (!strcmp(req_type, "Transmitter")) {
                 if (env->num_receivers != env->sz_array_rx - 1) {
                         fprintf(stderr, "Please specify all receivers before"
-                                " any transmitters.\n");
+                                " any transmitters. num rx %d,sz rx %d\n",
+                                env->num_receivers, env->sz_array_rx);
                         return 1;
                 }
                 struct transmitter *tx = init_transmitter();
@@ -815,15 +817,15 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
         } else if (!strcmp(req_type, "Endtime")) {
                 error |= custom_fscanf(fp, "%lf", &(env->end_time));
         } else if (!strcmp(req_type, "Num_tx")) {
-                error |= custom_fscanf(fp, "%lf", &(env->sz_array_tx));
+                error |= custom_fscanf(fp, "%d", &(env->sz_array_tx));
                 if (error) return error;
-                ++(env->sz_array_tx);
+                env->sz_array_tx += 1;
         } else if (!strcmp(req_type, "Num_rx")) {
-                error |= custom_fscanf(fp, "%lf", &(env->sz_array_rx));
+                error |= custom_fscanf(fp, "%d", &(env->sz_array_rx));
                 if (error) return error;
-                ++(env->sz_array_rx);
+                env->sz_array_rx += 1;
         } else if (!strcmp(req_type, "Num_reflectors")) {
-                error |= custom_fscanf(fp, "%lf", &(env->sz_array_pr));
+                error |= custom_fscanf(fp, "%d", &(env->sz_array_pr));
                 if (error) return error;
                 env->sz_array_pr += 2;
         } else if (!strncmp(req_type, "//", 2)) {
