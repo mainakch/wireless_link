@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <cblas.h>
 #include <complex.h>
+#include <errno.h>
 #include <fftw3.h>
 #include <getopt.h>
 #include <gsl/gsl_linalg.h>
@@ -24,20 +25,15 @@
 #define ANSI_COLOR_CYAN    "\x1b[36m"
 #define ANSI_COLOR_RESET   "\x1b[0m"
 #define _MODEL_DEBUG 0
-#define MAX_TX 10
-#define MAX_RX 2600
+#define MAX_TX 1
+#define MAX_RX 1
 #define MAX_RIBBON_SIZE 20
 #define MAX_SURFACES 20
 // if max values exceeded, may cause memory bugs
 
 struct simulation {
-        double frequency;
-        double wavelength;
-        double delta_time;
-        double max_limit;
-        double min_limit;
-        double boundary_tolerance;
-        int total_time;
+        struct environment *env;
+        struct file_reader *fr;
 };
 
 struct spatial_motion_model {
@@ -106,14 +102,18 @@ struct environment {
         int sz_array_gn;
         int sz_array_pr;
 
+        // flags
         bool read_in_nodes;
         bool updated_tx_paths;
+        /* should be true by the time TX or RX is true */
+        bool node_memory_allocated;
 };
 
 struct file_reader {
         FILE *infile;
         FILE *outfile;
-        // filenames longer than 1000 will be rejected
+
+        // filenames longer than 999 will be truncated
         char input_filename[1000];
         char output_filename[1000];
 };
@@ -132,7 +132,7 @@ struct perfect_reflector *init_perfect_reflector(const double *normal,
                                          double length, double width);
 struct perfect_reflector **init_perfect_reflectorarray(int number);
 struct environment *init_environment();
-struct file_reader *init_file_reader();
+int malloc_environment(struct environment *env);
 
 void print_vector(const double *db);
 void print_spatial_motion_model(const struct spatial_motion_model *smm);
@@ -157,7 +157,7 @@ void destroy_file_reader(struct file_reader *fr);
 void destroy_perfect_reflector(struct perfect_reflector *pr);
 void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin);
 double _gaussrand(); // http://c-faq.com/lib/gaussian.html
-struct file_reader *parse_input(int argc, char *argv[]);
+struct file_reader *init_file_reader(int argc, char *argv[]);
 void cross_product(const double *v1, const double *v2, double *v3);
 double normalize_unit_vector(double *v1);
 void diff(const double *v1, const double *v2, double *v3);
@@ -170,4 +170,6 @@ double distance(const struct general_node *gn1,
 
 bool update_environment_from_file(struct environment *env,
                                 FILE *fp);
-void handle_request(struct environment *env, FILE *fp, const char *req_type);
+bool update_environment_from_file_sim(struct simulation *sim);
+bool handle_request(struct environment *env, FILE *fp, const char *req_type);
+bool custom_fscanf(FILE *fp, const char *str, void *ptr);

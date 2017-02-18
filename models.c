@@ -12,17 +12,16 @@ int id()
         return (id++);
 }
 
-struct simulation *init_simulation()
+struct simulation *init_simulation(int argc, char **argv)
 {
-        struct simulation *sim_not_null = custom_malloc(sizeof(struct simulation));
-        sim_not_null->frequency = 60e9; // 60 Ghz
-        sim_not_null->wavelength = C / sim_not_null->frequency;
-        sim_not_null->delta_time = 0.1;
-        sim_not_null->max_limit = 1000;
-        sim_not_null->min_limit = 0;
-        sim_not_null->boundary_tolerance = 1;
-        sim_not_null->total_time = 200;
-        return sim_not_null;
+        struct simulation *sim = custom_calloc(1, sizeof(struct simulation));
+        sim->env = init_environment();
+        sim->fr = init_file_reader(argc, argv);
+        if (sim->fr == 0) {
+                destroy_simulation(sim);
+                sim = 0;
+        }
+        return sim;
 }
 
 struct spatial_motion_model *init_spatial_motion_model()
@@ -104,7 +103,7 @@ struct perfect_reflector *init_perfect_reflector_nine_pts_direction(
         diff(pt1, pt2, v1);
         diff(pt3, pt2, v2);
         cross_product(v1, v2, vnormal);
-        normalize_unit_vector(vnormal);
+        double normv = normalize_unit_vector(vnormal);
         // handle user supplied input if pt1 is at origin
         double out = cblas_ddot(3, vnormal, 1, pt1, 1);
         if (out * direction > 0) {
@@ -116,8 +115,13 @@ struct perfect_reflector *init_perfect_reflector_nine_pts_direction(
         cblas_dscal(3, 0.5, center_pt, 1);
         double length = cblas_dnrm2(3, v1, 1);
         double width = cblas_dnrm2(3, v2, 1);
-        normalize_unit_vector(v1);
-        return init_perfect_reflector(vnormal, center_pt, v1, length, width);
+        double normv1 = normalize_unit_vector(v1);
+        if (normv1 > 1e-5 && normv > 1e-5) {
+                return init_perfect_reflector(vnormal, center_pt,
+                                              v1, length, width);
+        } else {
+                return 0;
+        }
 }
 
 struct perfect_reflector **init_perfect_reflectorarray(int number)
@@ -130,40 +134,48 @@ struct perfect_reflector **init_perfect_reflectorarray(int number)
 struct environment *init_environment()
 {
         struct environment *env = custom_calloc(1, sizeof(struct environment));
-        env->receivers_array = custom_calloc(MAX_RX + 1, sizeof(struct receiver *));
-        env->transmitters_array = custom_calloc(MAX_TX + 1,
-                                         sizeof(struct transmitter *));
-        env->node_array = custom_calloc(MAX_TX + MAX_RX + 1,
-                                 sizeof(struct general_node *));
-        // env->unit_power_gaussian_noise = custom_calloc(11, sizeof(complex double));
-        env->prarray = custom_calloc(MAX_SURFACES + 2, sizeof(struct perfect_reflector *));
-        env->env_paths = custom_calloc(MAX_RX + 1, sizeof(struct ray_ribbon_array *));
-        // size of env paths is the same as the size of receivers_array
-        env->tx_paths = custom_calloc(MAX_TX + 1, sizeof(struct ray_ribbon_array *));
-        // size of tx paths is the same as the size of transmitters_array
 
+        env->frequency = 900e6;
+        env->delta_time = 0.001;
         env->sz_array_tx = MAX_TX + 1;
         env->sz_array_rx = MAX_RX + 1;
-        env->sz_array_gn = MAX_TX + MAX_RX + 1;
+
         env->sz_array_pr = MAX_SURFACES + 2;
-        env->updated_tx_paths = false;
         return env;
 }
 
-struct file_reader *init_file_reader(const char *input, const char *output)
+int malloc_environment(struct environment *env)
 {
-        struct file_reader *fr = custom_calloc(1, sizeof(struct file_reader));
+        env->sz_array_gn = env->sz_array_tx + env->sz_array_rx -1;
+        env->receivers_array = custom_calloc(env->sz_array_rx,
+                                             sizeof(struct receiver *));
+        env->transmitters_array = custom_calloc(env->sz_array_tx,
+                                         sizeof(struct transmitter *));
+        env->node_array = custom_calloc(env->sz_array_gn,
+                                 sizeof(struct general_node *));
+        env->prarray = custom_calloc(env->sz_array_pr,
+                                     sizeof(struct perfect_reflector *));
+        env->env_paths = custom_calloc(env->sz_array_rx,
+                                       sizeof(struct ray_ribbon_array *));
+        env->unit_power_gaussian_noise =
+                custom_calloc(env->sz_array_rx,
+                              sizeof(complex double));
 
-        printf("Opening %s for writing \n", output);
-        printf("Opening %s for reading \n", input);
+        // size of env paths is the same as the size of receivers_array
+        env->tx_paths = custom_calloc(env->sz_array_tx,
+                                      sizeof(struct ray_ribbon_array *));
 
-        fr->infile = fopen(input, "r");
-        fr->outfile = fopen(output, "w");
-        strncpy(fr->input_filename, input, 999);
-        fr->input_filename[999] = 0;
-        strncpy(fr->output_filename, output, 999);
-        fr->output_filename[999] = 0;
-        return fr;
+        // size of tx paths is the same as the size of transmitters_array
+
+        env->node_memory_allocated = true;
+        // check for errors
+        if (env->receivers_array == 0 || env->transmitters_array == 0 ||
+            env->node_array == 0 || env->prarray == 0 || env->env_paths == 0 ||
+            env->tx_paths == 0 || env->unit_power_gaussian_noise == 0) {
+                return 1;
+        } else {
+                return 0;
+        }
 }
 
 void print_vector(const double *db)
@@ -318,7 +330,8 @@ void destroy_spatial_motion_model(struct spatial_motion_model *smm)
 
 void destroy_simulation(struct simulation *sim)
 {
-        custom_free(sim);
+        if (sim->fr != 0) destroy_file_reader(sim->fr);
+        release_all_blocks();
 }
 
 void destroy_transmission_model(struct transmission_model *tm)
@@ -395,9 +408,13 @@ void destroy_environment(struct environment *env)
 
 void destroy_file_reader(struct file_reader *fr)
 {
-        if (fr->infile != NULL)  fclose(fr->infile);
-        if (fr->outfile != NULL)  fclose(fr->outfile);
-        custom_free(fr);
+        if (fr->input_filename[0] != '\0' && fr->infile != 0) {
+                fclose(fr->infile);
+        }
+        if (fr->output_filename[0] != '\0' && fr->outfile) {
+                fclose(fr->outfile);
+        }
+        free(fr);
 }
 
 void destroy_perfect_reflector(struct perfect_reflector *pr)
@@ -433,13 +450,13 @@ double _gaussrand() // http://c-faq.com/lib/gaussian.html
         return Z;
 }
 
-struct file_reader *parse_input(int argc, char *argv[])
+struct file_reader *init_file_reader(int argc, char *argv[])
 {
-        // initialized to zero in C99
+        struct file_reader *fr = 0;
         char inputname[1000];
         char outputname[1000];
-        strcpy(inputname, "/tmp/input.txt");
-        strcpy(outputname, "/tmp/output.txt");
+        memset(inputname, '\0', 1000);
+        memset(outputname, '\0', 1000);
 
         struct option long_options[] = {
                 {"input_filename", required_argument, 0, 'i'},
@@ -456,19 +473,64 @@ struct file_reader *parse_input(int argc, char *argv[])
                         break;
                 case 'i':
                         strncpy(inputname, optarg, 999);
+                        inputname[999] = '\0';
                         break;
                 case 'o':
                         strncpy(outputname, optarg, 999);
+                        outputname[999] = '\0';
                         break;
                 default:
-                        fprintf(stderr, "Error parsing options\n");
-                        exit(EXIT_FAILURE);
+                        fprintf(stderr, "Error parsing options.  ",
+                                "Valid options are:",
+                                "\t-i <inputfilename> ,",
+                                "\t-o <outputfilename> .  Filenames beyond 999 ",
+                                "characters will be truncated to the first 999",
+                                " characters.  If any ",
+                                "options are missing, stdout and stdin ",
+                                "will be used for output and input ",
+                                "respectively.\n");
+                        return 0;
                 }
                 c = getopt_long(argc, argv, "i:o:",
                                 long_options, &option_index);
         }
 
-        return init_file_reader(inputname, outputname);
+        fr = calloc(1, sizeof(struct file_reader));
+        if (fr == 0) {
+                fprintf(stderr, "Memory allocation failed for file reader.\n");
+                return 0; // memory error
+        }
+        assert(fr != 0);
+
+        fprintf(stderr, "Opening %s for writing... \n", outputname);
+        fprintf(stderr, "Opening %s for reading... \n", inputname);
+
+        // open inputfile
+        if (inputname[0] != '\0') {
+                fr->infile = fopen(inputname, "r");
+        } else {
+                fr->infile = stdin;
+        }
+
+        // open outputfile
+        if (outputname[0] != '\0') {
+                fr->outfile = fopen(outputname, "w");
+        } else {
+                fr->outfile = stdout;
+        }
+
+        // check for errors in opening files
+        if (fr->infile == 0 || fr->outfile == 0) {
+                fprintf(stderr, "Error opening input or output file.  Exiting. ",
+                        "\n");
+                destroy_file_reader(fr);
+                fr = 0;
+        } else {
+                strncpy(fr->input_filename, inputname, 1000);
+                strncpy(fr->output_filename, outputname, 1000);
+        }
+
+        return fr;
 }
 
 void cross_product(const double *v1, const double *v2, double *v3)
@@ -481,7 +543,7 @@ void cross_product(const double *v1, const double *v2, double *v3)
 double normalize_unit_vector(double *v1)
 {
         double normv1 =  cblas_dnrm2(3, v1, 1);
-        cblas_dscal(3, 1/normv1, v1, 1);
+        if (normv1 > 1e-5) cblas_dscal(3, 1/normv1, v1, 1);
         return normv1;
 }
 
@@ -536,14 +598,6 @@ void destroy_last_reflector(struct environment *env)
 
 static void add_reflector(struct environment *env, struct perfect_reflector *pr)
 {
-        /* if (env->num_reflectors >= env->sz_array_pr) { */
-        /*         int new_size = 2 * env->sz_array_pr; */
-        /*         void *tmp = realloc(env->prarray, */
-        /*                       new_size * sizeof(struct perfect_reflector *)); */
-        /*         if (tmp == 0) exit(1); */
-        /*         env->prarray = tmp; */
-        /*         env->sz_array_pr = new_size; */
-        /* } */
         *(env->prarray + env->num_reflectors) = pr;
         env->num_reflectors++;
         *(env->prarray + env->num_reflectors) = 0;
@@ -551,14 +605,6 @@ static void add_reflector(struct environment *env, struct perfect_reflector *pr)
 
 static void add_transmitter(struct environment *env, struct transmitter *tx)
 {
-        /* if (env->num_transmitters + 1 >= env->sz_array_tx) { */
-        /*         int new_size = 2 * env->sz_array_tx; */
-        /*         void *tmp = realloc(env->transmitters_array, */
-        /*                       new_size * sizeof(struct transmitter *)); */
-        /*         if (tmp == 0) exit(1); */
-        /*         env->transmitters_array = tmp; */
-        /*         env->sz_array_tx = new_size; */
-        /* } */
         *(env->transmitters_array + env->num_transmitters) = tx;
         env->num_transmitters++;
         *(env->transmitters_array + env->num_transmitters) = 0;
@@ -567,18 +613,8 @@ static void add_transmitter(struct environment *env, struct transmitter *tx)
 
 static void add_receiver(struct environment *env, struct receiver *rx)
 {
-        /* if (env->num_receivers >= env->sz_array_tx) { */
-        /*         int new_size = 2 * env->sz_array_tx; */
-        /*         void *tmp = realloc(env->receivers_array, */
-        /*                       new_size * sizeof(struct receiver *)); */
-        /*         if (tmp == 0) exit(1); */
-        /*         env->receivers_array = tmp; */
-        /*         *(env->receivers_array + env->num_receivers + 1) = 0; */
-        /*         env->sz_array_tx = new_size; */
-        /* } */
         *(env->receivers_array + env->num_receivers) = rx;
         env->num_receivers++;
-        // fprintf(stderr, "Nulling %d\n", env->num_receivers);
         *(env->receivers_array + env->num_receivers) = 0;
         add_general_node(env, rx->gn);
 }
@@ -586,14 +622,6 @@ static void add_receiver(struct environment *env, struct receiver *rx)
 static void add_general_node(struct environment *env, struct general_node *gn)
 {
         int length = env->num_transmitters + env->num_receivers;
-        /* if (length >= env->sz_array_gn) { */
-        /*         int new_size = 2 * env->sz_array_gn; */
-        /*         void *tmp = realloc(env->node_array, */
-        /*                       new_size * sizeof(struct general_node *)); */
-        /*         if (tmp == 0) exit(1); */
-        /*         env->node_array = tmp; */
-        /*         env->sz_array_gn = length; */
-        /* } */
         *(env->node_array + length - 1) = gn;
         *(env->node_array + length) = 0;
 }
@@ -611,79 +639,138 @@ double distance(const struct general_node *gn1, const struct general_node *gn2)
         return cblas_dnrm2(3, diff, 1);
 }
 
-bool update_environment_from_file(struct environment *env, FILE *fp)
+bool update_environment_from_file_sim(struct simulation *sim)
 {
-        if (fp == NULL)
-        {
-                fprintf(stderr, "Fatal error: input file not provided!\n");
-                exit(EXIT_FAILURE); // fix potential memory errors
-        }
 
-        char mode[] = "r";
-        char fmt[] = "%s"; // check for vulnerabilities
-        char buff[100];
+        struct environment *env = sim->env;
+        FILE *fp = sim->fr->infile;
+
+        char fmt[] = "%50s"; // read upto 50 characters
+        char buff[64];
         bool eofflag = true;
+        bool error_flag = false;
         while (fscanf(fp, fmt, buff) != EOF) {
                 eofflag = false;
-                handle_request(env, fp, buff);
+                error_flag |= handle_request(env, fp, buff);
                 if (strcmp(buff, "End") == 0) break;
         }
+
+        if (error_flag) {
+                fprintf(stderr, "Error in file syntax.  Exiting.\n");
+                destroy_simulation(sim);
+                exit(1);
+        }
+
         return eofflag;
 }
 
-void handle_request(struct environment *env, FILE *fp, const char *req_type)
+bool handle_request(struct environment *env, FILE *fp, const char *req_type)
 {
+        // perform validations here
         int ctr;
+        bool error = false;
         if (!strcmp(req_type, "Nodepath")) {
                 int id;
-                fscanf(fp, "%d", &id);
-                if (_MODEL_DEBUG) fprintf(stderr, "id: %d\n", id);
+                error |= custom_fscanf(fp, "%d", &id);
+                if (error || id < 0 ||
+                    id > env->sz_array_gn - 1) {
+                        fprintf(stderr, "Format error or invalid id.\n");
+                        return 1;
+                }
 
-                for (ctr=0; ctr<3; ctr++) {
-                        fscanf(fp, "%lf",
+                for (ctr=0; ctr<3; ++ctr) {
+                        error |= custom_fscanf(fp, "%lf",
                                &(env->node_array[id]->smm->position[ctr]));
-                        fscanf(fp, "%lf",
+                        error |= custom_fscanf(fp, "%lf",
                                &(env->node_array[id]->smm->velocity[ctr]));
                 }
         } else if (!strcmp(req_type, "Gaussianrand")) {
-                for (ctr=0; ctr < env->num_receivers; ctr++) {
+                for (ctr = 0; ctr < env->num_receivers; ++ctr) {
                         double re, im;
-                        fscanf(fp, "%lf", &re);
-                        fscanf(fp, "%lf", &im);
+                        error |= custom_fscanf(fp, "%lf", &re);
+                        error |= custom_fscanf(fp, "%lf", &im);
+                        if (error) return error;
                         env->unit_power_gaussian_noise[ctr] =
                                 pow(0.5, -0.5)*(re + I*im);
                 }
         } else if (!strcmp(req_type, "Time")) {
-                fscanf(fp, "%lf", &(env->time));
+                error |= custom_fscanf(fp, "%lf", &(env->time));
         } else if (!strcmp(req_type, "End")) {
                 if (!(env->read_in_nodes)) {
-                        env->read_in_nodes = 1;
-                        env->unit_power_gaussian_noise =
-                                custom_calloc(env->num_receivers + 1,
-                                       sizeof(complex double));
+                        env->read_in_nodes = true;
+                        // check whether all the bounds are met
+                        if (env->num_transmitters != env->sz_array_tx -1 ||
+                            env->num_receivers != env->sz_array_rx - 1 ||
+                            env->delta_time < 0 || env->frequency < 0) {
+                                fprintf(stderr, "Please specify all "
+                                        "transmitters and receivers, "
+                                        " check for negative frequency and "
+                                        " time delta.\n");
+                                return 1;
+                        }
                 }
         } else if (!strcmp(req_type, "Transmittersignal")) {
                 int id;
-                fscanf(fp, "%d", &id);
+                error |= custom_fscanf(fp, "%d", &id);
                 double re, im;
-                fscanf(fp, "%lf", &re);
-                fscanf(fp, "%lf", &im);
+                error |= custom_fscanf(fp, "%lf", &re);
+                error |= custom_fscanf(fp, "%lf", &im);
                 struct transmitter *tx;
-                tx = *(env->transmitters_array + id);
+                if (error || id < env->num_receivers ||
+                    id > env->num_transmitters +
+                    env->num_receivers - 1) {
+                        fprintf(stderr, "Format error or invalid id.\n");
+                        return 1;
+                }
+                tx = *(env->transmitters_array + id - env->num_receivers);
                 tx->baseband_signal = re + I * im;
         } else if (!strcmp(req_type, "Frequency")) {
-                fscanf(fp, "%lf", &env->frequency);
-                env->wavelength = C/env->frequency;
+                error |= custom_fscanf(fp, "%lf", &env->frequency);
+                if (!error || env->frequency > 1e-5) {
+                        env->wavelength = C/env->frequency;
+                } else {
+                        fprintf(stderr, "Error!\n");
+                }
         } else if (!strcmp(req_type, "Transmitter")) {
+                if (env->num_receivers != env->sz_array_rx - 1) {
+                        fprintf(stderr, "Please specify all receivers before"
+                                " any transmitters.\n");
+                        return 1;
+                }
                 struct transmitter *tx = init_transmitter();
-                fscanf(fp, "%d", &tx->gn->id);
-                fscanf(fp, "%lf", &tx->gn->tm->power_in_dBm);
+                error |= custom_fscanf(fp, "%d", &tx->gn->id);
+                if (tx->gn->id != env->num_transmitters + env->num_receivers) {
+                        fprintf(stderr, "Please order node id in sequence "
+                                " starting from 0.\n");
+                        return 1;
+                }
+                error |= custom_fscanf(fp, "%lf", &tx->gn->tm->power_in_dBm);
+                if (error) return error;
                 add_transmitter(env, tx);
         } else if (!strcmp(req_type, "Receiver")) {
+                if (!env->node_memory_allocated) {
+                        int flag = malloc_environment(env);
+                        if (flag) {
+                                fprintf(stderr, "Insufficient memory or"
+                                        "negative number of nodes or "
+                                        "reflectors.\n");
+                                return flag;
+                        } else {
+                                fprintf(stderr, "Successfully allocated memory"
+                                        ".\n");
+                        }
+                }
                 struct receiver *rx = init_receiver();
-                fscanf(fp, "%d", &rx->gn->id);
+                error |= custom_fscanf(fp, "%d", &rx->gn->id);
+                if (rx->gn->id != env->num_transmitters + env->num_receivers) {
+                        fprintf(stderr, "Please order node id in sequence "
+                                " starting from 0.\n");
+                        return 1;
+                }
+
                 double np;
-                fscanf(fp, "%lf", &np);
+                error |= custom_fscanf(fp, "%lf", &np);
+                if (error) return error;
                 rx->recv_noise_power = pow(10, np/10);
                 add_receiver(env, rx);
         } else if (!strcmp(req_type, "Perfectreflector")) {
@@ -692,25 +779,68 @@ void handle_request(struct environment *env, FILE *fp, const char *req_type)
                 int ctr1;
                 for (ctr1 = 0; ctr1 < 3; ctr1++) {
                         for (ctr = 0; ctr < 3; ctr++) {
-                                fscanf(fp, "%lf", &pt1[ctr1][ctr]);
+                                error |= custom_fscanf(fp, "%lf",
+                                                            &pt1[ctr1][ctr]);
                         }
                 }
-                fscanf(fp, "%lf", &direction);
-                add_reflector(env, init_perfect_reflector_nine_pts_direction(
-                                      pt1[0], pt1[1], pt1[2],  direction));
+                error |= custom_fscanf(fp, "%lf", &direction);
+                if (error) return error;
+                struct perfect_reflector *ref =
+                        init_perfect_reflector_nine_pts_direction(
+                                pt1[0], pt1[1], pt1[2],  direction);
+                if (ref != 0 &&
+                    env->num_reflectors < env->sz_array_pr - 1) {
+                        add_reflector(env, ref);
+                }
         } else if (!strcmp(req_type, "Frequency")) {
-                fscanf(fp, "%lf", &(env->frequency));
-                env->wavelength = C/env->frequency;
+                error |= custom_fscanf(fp, "%lf", &(env->frequency));
+                if (error) return error;
+                if (abs(env->frequency) > 1e-5) {
+                        env->wavelength = C/env->frequency;
+                } else {
+                        return true;
+                }
         } else if (!strcmp(req_type, "Receivernormal")) {
 	        double v1[3];
 		for(ctr = 0; ctr < 3; ctr++) {
-		        fscanf(fp, "%lf", &v1[ctr]);
+		        error |= custom_fscanf(fp, "%lf", &v1[ctr]);
 		}
+                if (error) return error;
+                if (cblas_dnrm2(3, v1, 1) < 1e-5) return true;
+
                 cblas_dcopy(3, v1, 1, env->recv_unit_normal, 1);
                 normalize_unit_vector(env->recv_unit_normal);
 	} else if (!strcmp(req_type, "Deltatime")) {
-                fscanf(fp, "%lf", &(env->delta_time));
+                error |= custom_fscanf(fp, "%lf", &(env->delta_time));
         } else if (!strcmp(req_type, "Endtime")) {
-                fscanf(fp, "%lf", &(env->end_time));
+                error |= custom_fscanf(fp, "%lf", &(env->end_time));
+        } else if (!strcmp(req_type, "Num_tx")) {
+                error |= custom_fscanf(fp, "%lf", &(env->sz_array_tx));
+                if (error) return error;
+                ++(env->sz_array_tx);
+        } else if (!strcmp(req_type, "Num_rx")) {
+                error |= custom_fscanf(fp, "%lf", &(env->sz_array_rx));
+                if (error) return error;
+                ++(env->sz_array_rx);
+        } else if (!strcmp(req_type, "Num_reflectors")) {
+                error |= custom_fscanf(fp, "%lf", &(env->sz_array_pr));
+                if (error) return error;
+                env->sz_array_pr += 2;
+        } else if (!strncmp(req_type, "//", 2)) {
+                int ctr = 0;
+                char ch = '1';
+                while (ch != '\n' || !error) {
+                        error |= (fread(&ch, 1, 1, fp) == 0);
+                }
+                if (error) return error;
+        } else {
+                // keyword not found
+                error = true;
         }
+        return error;
+}
+
+bool custom_fscanf(FILE *fp, const char *str, void *ptr)
+{
+        return fscanf(fp, str, ptr) == 0;
 }
