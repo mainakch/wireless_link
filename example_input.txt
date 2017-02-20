@@ -1,0 +1,66 @@
+// all units in SI units (metres, seconds, radians, etc.)
+// line length for comments must be at most 4095 characters
+
+// specify number of receivers, transmitters and scatterers
+Num_tx 2
+Num_rx 2
+
+// specify carrier frequency in
+Frequency 3700000000.0
+// specify time delta of simulations
+Deltatime 1.3333333333333333e-05
+
+// specify receiver in the format Receiver <id> <noise_power_in_dBm>
+Receiver 0 -130
+// specify spatial coordinates for Node <id> in the format:
+// Nodepath <id> <xcoord> <xvelocity> <ycoord> <yvelocity> <zcoord> <zvelocity>
+Nodepath 0 200.0 0 150 0 53 0
+// specify all receivers before specifying transmitters
+Receiver 1 -130
+Nodepath 1 200.04051249432433 0 150 0 53 0
+
+// now specify transmitters in the format Transmitter <id> <tx_power_in_dBm> 
+Transmitter 2 0
+Transmitter 3 0
+
+// specify rectangular reflectors by specifying three points and whether shiny
+// side is facing the origin in the following format:
+// Perfectreflector <x1> <y1> <z1> <x2> <y2> <z2> <1 (facing origin) or 0 (away)>
+
+Perfectreflector 200 150 0 350 150 0 350 150 40 1
+Perfectreflector 450 -200 0 500 -100 0 500 -100 50 1
+Perfectreflector 250 -200 0 350 -200 0 350 -200 40 1
+Perfectreflector 10 50 0 110 150 0 110 150 20 1
+Perfectreflector -1000 -1000 -1 -1000 1000 -1 1000 1000 -1 1
+
+// specify normal to the receiver plane, used for ray tracing
+Receivernormal 0 -0.5000000000000001 -0.8660254037844386
+// simulation will be set up with this end
+End
+
+// specify transmit signals and node positions and velocitys at time instant
+// Time <currentTime (must be sequential multiples of Deltatime)> 
+Time 0.0
+// Transmittersignal <id> <real baseband signal> <complex baseband signal>
+Transmittersignal 2 1 0
+Transmittersignal 3 0 0
+Nodepath 2 0.0 138.889 0 0 3 3
+Nodepath 3 0.0 1.4 -100 0 3 3
+// Random gaussian process realization at all receivers 
+// Gaussianrand <rx1 real> <rx1 imaginary> ... <rxN real> <rxN imaginary>
+Gaussianrand 1.8207633177792006   0.969654208956567  0.3723041095075353   -0.9493112798390407  
+End
+// simulation will write out signals at all the receivers at this point
+Time 1.3333333333333333e-05
+Nodepath 2 0.0018518533333333335 138.889 0 0 3 3
+Nodepath 3 1.8666666666666665e-05 1.4 -100 0 3 3
+Gaussianrand -1.535368231473695   -0.4581019129892115  -0.42540649614555975   -0.3290019187178203  
+End
+Time 2.6666666666666667e-05
+Nodepath 2 0.003703706666666667 138.889 0 0 3 3
+Nodepath 3 3.733333333333333e-05 1.4 -100 0 3 3
+Gaussianrand 0.8495983257581665   -0.0644369315345572  -1.2005549421822221   0.6551577408138035  
+End
+
+
+
