@@ -1,0 +1,8 @@
+#!/bin/bash
+
+INSTALL_DIR=/usr/bin
+
+cmake -H. -Bbuild 
+cmake --build build 
+
+sudo cp build/wireless_link $INSTALL_DIR
