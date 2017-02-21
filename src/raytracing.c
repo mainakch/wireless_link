@@ -125,7 +125,6 @@ static void free_memory(void *ptr, struct memory_register *mem_reg)
         struct memory_block *mem_blk = *(mem_reg->free_array + hash_p);
         struct memory_block *mem_prv = 0;
 
-        // exit if fatal error TODO
         while (mem_blk->ptr != ptr) {
                 mem_prv = mem_blk;
                 mem_blk = mem_blk->next;
@@ -202,8 +201,7 @@ int counter()
 
 struct receiver_ray_ribbon_ll_node *init_receiver_ray_ribbon_ll_node() {
         struct receiver_ray_ribbon_ll_node *rnll =
-                custom_calloc(1, sizeof(struct receiver_ray_ribbon_ll_node *));
-
+                custom_calloc(1, sizeof(struct receiver_ray_ribbon_ll_node));
         return rnll;
 }
 
@@ -212,7 +210,6 @@ struct receiver_ray_ribbon *init_receiver_ray_ribbon(
         const struct ray_ribbon *ribbon,
         struct environment *env)
 {
-        // make sure ribbon is not zero
         struct receiver_ray_ribbon *rrbn_new =
                 custom_calloc(1, sizeof(struct receiver_ray_ribbon));
         const struct perfect_reflector **prconst =
@@ -246,12 +243,14 @@ bool populate_if_ray_ribbon_doesnt_exist
                 rnprev->next = init_receiver_ray_ribbon_ll_node();
                 rnprev->next->rrbn = init_receiver_ray_ribbon(rx, rb1, env);
         }
+
         return true;
 }
 
 void populate_receiver_ray_ribbons(struct environment *env)
 {
-        if (*(env->tx_paths) == 0 || env->updated_tx_paths) {
+        if (*(env->tx_paths) == 0 &&
+            env->tx_paths_updated_rx_paths_updated) {
                 return;
         }
 
@@ -267,9 +266,8 @@ void populate_receiver_ray_ribbons(struct environment *env)
                         while (rbn != 0) {
                                 rbn->start_tx = *(env->transmitters_array
                                                   + ctrtx);
-                                if (populate_if_ray_ribbon_doesnt_exist(
-                                            rbn, rx, env)) {
-                                }
+                                populate_if_ray_ribbon_doesnt_exist(
+                                        rbn, rx, env);
                                 ++ctrp;
                                 rbn = *(rbnarr->ribbons + ctrp);
                         }
@@ -281,7 +279,7 @@ void populate_receiver_ray_ribbons(struct environment *env)
                 ++ctrrx;
                 rx = *(env->receivers_array + ctrrx);
         }
-        env->updated_tx_paths = false;
+        env->tx_paths_updated_rx_paths_updated = true;
 }
 
 void update_all_receiver_ray_ribbons(struct environment *env)
@@ -320,7 +318,8 @@ bool update_receiver_ray_ribbons(struct receiver *rx,
                         rlln->rrbn->ribbon = refined_ribbon;
                         update_receiver_ribbon_delay_dopplers(rlln->rrbn, env);
                 } else {
-                        env->updated_tx_paths = false;
+                        // tx path update is triggered whenever ray is lost
+                        env->tx_paths_updated = false;
                         rlln->rrbn->ribbon = 0;
                 }
 
@@ -1201,7 +1200,7 @@ struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb)
 
 void populate_tx_paths(struct environment *env)
 {
-        if (env->updated_tx_paths) return;
+        if (env->tx_paths_updated) return;
         int ctr = 0;
         clear_tx_paths(env);
         add_receiver_patch(env, 10);
@@ -1212,7 +1211,7 @@ void populate_tx_paths(struct environment *env)
         struct transmitter *tx = *(env->transmitters_array);
         struct ray_ribbon_array *rb_arr;
         while (ctr < env->num_transmitters) {
-                rb_arr = init_ray_ribbon_array(20);
+                rb_arr = init_ray_ribbon_array(30);
                 //populate_ray_ribbon_array(tx, prconst, rb_arr, 600, 3, true);
 
                 populate_ray_ribbon_array_long(tx, prconst,
@@ -1231,70 +1230,9 @@ void populate_tx_paths(struct environment *env)
         }
 
         destroy_last_reflector(env);
+        env->tx_paths_updated_rx_paths_updated = false;
 }
 
-void populate_env_paths(struct environment *env)
-{
-        add_receiver_patch(env, 20);
-
-        // first sound the channel
-        const struct perfect_reflector **prconst =
-                (const struct perfect_reflector **) env->prarray;
-
-        // now generate rayribbons for each receiver
-        // clear existing ray ribbon arrays
-        clear_env_paths(env);
-
-        // ctr loops over receivers
-        int ctr = 0;
-        struct receiver *rx = *(env->receivers_array);
-        while (ctr < env->num_receivers) {
-                // ctrtx loops over transmitters
-                int ctrtx = 0;
-                struct ray_ribbon_array *rb_arr =
-                        init_ray_ribbon_array(20); // if too low, can cause bugs
-
-
-                struct ray_ribbon_array *rba = *(env->tx_paths);
-                struct transmitter *tx = *(env->transmitters_array);
-                while (ctrtx < env->num_transmitters) {
-                        // ctr2 loops over rays in tx path ray ribbon from a
-                        // part. tx
-
-                        int ctr2 = 0;
-                        struct ray_ribbon *rb;
-                        rb = *(rba->ribbons + ctr2);
-                        while(rb != 0) {
-                                struct ray_ribbon *tmprb =
-                                        refine_ray_ribbon_image(tx,
-                                                                rb, rx, prconst);
-                                bool stat;
-                                if (tmprb == 0) {
-                                        fprintf(stderr, "Null ribbon for ray %d"
-                                                " of tx %d at rx %d\n",
-                                                ctr2, ctrtx, ctr);
-                                } else {
-                                        stat = add_ray_ribbon(rb_arr,
-                                                              tmprb, true);
-                                }
-                                if (!stat && tmprb != 0) {
-                                        fprintf(stderr, "Unexpected error! "
-                                                "stat should always be true!\n");
-                                }
-                                ctr2++;
-                                rb = *(rba->ribbons + ctr2);
-                        }
-                        ctrtx++;
-                        rba = *(env->tx_paths + ctrtx);
-                        tx = *(env->transmitters_array + ctrtx);
-                }
-                *(env->env_paths + ctr) = rb_arr;
-                ++ctr;
-                *(env->env_paths + ctr) = 0;
-                rx = *(env->receivers_array + ctr);
-        }
-        destroy_last_reflector(env);
-}
 
 void update_env_paths_delay_dopplers(struct environment *env) {
         int ctr = 0;
@@ -1463,11 +1401,16 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                                 + rrbn->reflection_phase -
                                 (env->frequency + rrbn->doppler) *
                                 rrbn->signal->delay;
-                        signal += rrbn->gain * cexp(2 * PI * phase * I)
-                                * pow(10,
-                                      rrbn->start_tx->gn->tm->power_in_dBm/10)
-                                * rrbn->signal->signal;
-                        rrbn->signal->receiver_read = true;
+                        if (rrbn->signal->delay + rrbn->signal->transmit_time
+                            < env->time) {
+                                double txpower =
+                                        rrbn->start_tx->gn->tm->power_in_dBm/10;
+                                signal += rrbn->gain
+                                        * cexp(2 * PI * phase * I)
+                                        * pow(10, txpower)
+                                        * rrbn->signal->signal;
+                                rrbn->signal->receiver_read = true;
+                        }
                         rlln = rlln->next;
                 }
 
@@ -1804,4 +1747,68 @@ void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
 
         // compute doppler
         rb->doppler = compute_doppler(rb, env);
+}
+
+// deprecated
+void populate_env_paths(struct environment *env)
+{
+        add_receiver_patch(env, 20);
+
+        // first sound the channel
+        const struct perfect_reflector **prconst =
+                (const struct perfect_reflector **) env->prarray;
+
+        // now generate rayribbons for each receiver
+        // clear existing ray ribbon arrays
+        clear_env_paths(env);
+
+        // ctr loops over receivers
+        int ctr = 0;
+        struct receiver *rx = *(env->receivers_array);
+        while (ctr < env->num_receivers) {
+                // ctrtx loops over transmitters
+                int ctrtx = 0;
+                struct ray_ribbon_array *rb_arr =
+                        init_ray_ribbon_array(30); // if too low, can cause bugs
+
+
+                struct ray_ribbon_array *rba = *(env->tx_paths);
+                struct transmitter *tx = *(env->transmitters_array);
+                while (ctrtx < env->num_transmitters) {
+                        // ctr2 loops over rays in tx path ray ribbon from a
+                        // part. tx
+
+                        int ctr2 = 0;
+                        struct ray_ribbon *rb;
+                        rb = *(rba->ribbons + ctr2);
+                        while(rb != 0) {
+                                struct ray_ribbon *tmprb =
+                                        refine_ray_ribbon_image(tx,
+                                                                rb, rx, prconst);
+                                bool stat;
+                                if (tmprb == 0) {
+                                        fprintf(stderr, "Null ribbon for ray %d"
+                                                " of tx %d at rx %d\n",
+                                                ctr2, ctrtx, ctr);
+                                } else {
+                                        stat = add_ray_ribbon(rb_arr,
+                                                              tmprb, true);
+                                }
+                                if (!stat && tmprb != 0) {
+                                        fprintf(stderr, "Unexpected error! "
+                                                "stat should always be true!\n");
+                                }
+                                ctr2++;
+                                rb = *(rba->ribbons + ctr2);
+                        }
+                        ctrtx++;
+                        rba = *(env->tx_paths + ctrtx);
+                        tx = *(env->transmitters_array + ctrtx);
+                }
+                *(env->env_paths + ctr) = rb_arr;
+                ++ctr;
+                *(env->env_paths + ctr) = 0;
+                rx = *(env->receivers_array + ctr);
+        }
+        destroy_last_reflector(env);
 }

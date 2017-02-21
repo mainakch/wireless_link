@@ -65,7 +65,7 @@ struct transmitter *init_transmitter()
 
 struct receiver *init_receiver()
 {
-        struct receiver *rc = custom_malloc(sizeof(struct receiver));
+        struct receiver *rc = custom_calloc(1, sizeof(struct receiver));
         rc->gn = init_general_node();
         rc->recv_noise_power = pow(10, -16);
         rc->rlln = 0;//custom_calloc(16, sizeof(struct receiver_ray_ribbon *));
@@ -662,6 +662,7 @@ bool update_environment_from_file_sim(struct simulation *sim)
                 exit(1);
         }
 
+        if (eofflag) destroy_simulation(sim);
         return eofflag;
 }
 
@@ -674,12 +675,13 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
                 int id;
                 error |= custom_fscanf(fp, "%d", &id);
                 if (error || id < 0 ||
-                    id > env->sz_array_gn - 1) {
+                    id > env->num_transmitters
+                    + env->num_receivers - 1) {
                         fprintf(stderr, "Format error or invalid id.\n");
                         return 1;
                 }
 
-                for (ctr=0; ctr<3; ++ctr) {
+                for (ctr = 0; ctr < 3; ++ctr) {
                         error |= custom_fscanf(fp, "%lf",
                                &(env->node_array[id]->smm->position[ctr]));
                         error |= custom_fscanf(fp, "%lf",
@@ -735,14 +737,13 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
         } else if (!strcmp(req_type, "Transmitter")) {
                 if (env->num_receivers != env->sz_array_rx - 1) {
                         fprintf(stderr, "Please specify all receivers before"
-                                " any transmitters. num rx %d,sz rx %d\n",
-                                env->num_receivers, env->sz_array_rx);
+                                " any transmitters.\n");
                         return 1;
                 }
                 struct transmitter *tx = init_transmitter();
                 error |= custom_fscanf(fp, "%d", &tx->gn->id);
                 if (tx->gn->id != env->num_transmitters + env->num_receivers) {
-                        fprintf(stderr, "Please order node id in sequence "
+                        fprintf(stderr, "Please order node id in sequence"
                                 " starting from 0.\n");
                         return 1;
                 }
@@ -830,10 +831,9 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
                 env->sz_array_pr += 2;
         } else if (!strncmp(req_type, "//", 2)) {
                 int ctr = 0;
+                char buff[4096];
                 char ch = '1';
-                while (ch != '\n' || !error) {
-                        error |= (fread(&ch, 1, 1, fp) == 0);
-                }
+                fgets(buff, 4095, fp);
                 if (error) return error;
         } else {
                 // keyword not found
@@ -846,3 +846,7 @@ bool custom_fscanf(FILE *fp, const char *str, void *ptr)
 {
         return fscanf(fp, str, ptr) == 0;
 }
+
+// Deprecated
+
+// deprecated
