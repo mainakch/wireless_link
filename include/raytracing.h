@@ -180,11 +180,6 @@ void invert_spherical_angles(const double *unit_vector, double *phi,
                              double *theta);
 
 
-struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
-                                                 const struct
-                                                 perfect_reflector **ref_arr,
-                                                 int num_ref,
-                                                 const struct ray_ribbon *rb);
 int count_ribbon_nodes(const struct ribbon_node *rn);
 struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                      const struct ray_ribbon *rb,
@@ -208,7 +203,6 @@ struct ray_ribbon_array *throw_three_dim_ray_ribbon(struct transmitter *tn,
                                                     const double thet_incr);
 struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb);
 void populate_tx_paths(struct environment *env);
-void update_env_paths_delay_dopplers(struct environment *env);
 void update_receiver_ribbon_delay_dopplers(struct receiver_ray_ribbon *rrb,
                                   const struct environment *env);
 double compute_doppler(const struct ray_ribbon *rb,
@@ -247,3 +241,9 @@ void remove_ribbon_node_duplicates(struct ribbon_node *rn);
 void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
                                   const struct environment *env);
 void populate_env_paths(struct environment *env);
+struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
+                                                 const struct
+                                                 perfect_reflector **ref_arr,
+                                                 int num_ref,
+                                                 const struct ray_ribbon *rb);
+void update_env_paths_delay_dopplers(struct environment *env);

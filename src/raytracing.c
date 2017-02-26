@@ -263,9 +263,8 @@ void populate_receiver_ray_ribbons(struct environment *env)
         }
         fprintf(stderr, "Updating receiver ribbons\n");
 
-        int ctrrx = 0;
-        struct receiver *rx = *(env->receivers_array + ctrrx);
-        while (rx != 0) {
+        for (int ctrrx = 0; ctrrx < env->num_receivers; ++ctrrx) {
+                struct receiver *rx = *(env->receivers_array + ctrrx);
                 int ctrprx = 0;
                 int ctrtx = 0;
                 struct ray_ribbon_array *rbnarr = *(env->tx_paths + ctrtx);
@@ -285,22 +284,16 @@ void populate_receiver_ray_ribbons(struct environment *env)
                         ++ctrtx;
                         rbnarr = *(env->tx_paths + ctrtx);
                 }
-
-                ++ctrrx;
-                rx = *(env->receivers_array + ctrrx);
         }
         env->tx_paths_updated_rx_paths_updated = true;
 }
 
 void update_all_receiver_ray_ribbons(struct environment *env)
 {
-        int ctrrx = 0;
-        struct receiver *rx = *(env->receivers_array + ctrrx);
-        while (rx != 0) {
+        for (int ctrrx = 0; ctrrx < env->num_receivers; ++ctrrx) {
+                struct receiver *rx = *(env->receivers_array + ctrrx);
                 update_receiver_ray_ribbons(rx, env);
                 update_receiver_ray_ribbons_signal_buffer(rx, env);
-                ++ctrrx;
-                rx = *(env->receivers_array + ctrrx);
         }
 }
 
@@ -309,8 +302,7 @@ bool update_receiver_ray_ribbons(struct receiver *rx,
 {
         // this function updates the ray ribbon spatial parameters
         // based on the spatial locations
-        // of the transmitter and the receiver, returns whether the ray ribbon
-        // still exists or not
+        // of the transmitter and the receiver, returns true
 
         struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
         const struct perfect_reflector **prconst =
@@ -754,11 +746,6 @@ bool check_same_type(const struct ray_ribbon *ray_rb1,
                 rn1 = rn1->down;
                 rn2 = rn2->down;
         }
-        /* if (!(hit1 || hit2)) { */
-        /*         fprintf(stderr, "Hit1 %d, Hit2 %d\n", hit1, hit2); */
-        /*         print_ray_ribbon(ray_rb1); */
-        /*         print_ray_ribbon(ray_rb2); */
-        /* } */
         assert(hit1 || hit2);
 
         return (hit1 == hit2);
@@ -769,17 +756,6 @@ bool add_ray_ribbon(struct ray_ribbon_array *array, struct ray_ribbon *rb,
                     bool single_type)
 {
         if (rb == NULL) return false;
-        /* if (array->current_len + 1 >= array->max_len) { */
-        /*         // automatic resizing */
-        /*         struct ray_ribbon **tmp = */
-        /*                 realloc(array->ribbons, 2 * array->max_len); */
-        /*         if (tmp == NULL) { */
-        /*                 return false; */
-        /*         } else { */
-        /*                 array->max_len *= 2; */
-        /*                 array->ribbons = tmp; */
-        /*         } */
-        /* } */
 
         if (single_type) {
                 int ctr = 0;
@@ -838,11 +814,6 @@ double complex compute_intersection(const struct half_infinite_ray *hr,
         if (t < INFINITY) {
                 // Verify the signs
                 cblas_daxpy(3, t, hr->unit_direction, 1, diff, 1);
-
-                //print_vector(diff);
-                //print_vector(pr->unit_length_normal);
-                //print_vector(pr->unit_width_normal);
-
                 double lengtht = cblas_ddot(3, diff, 1,
                                             pr->unit_length_normal, 1);
                 double widtht = cblas_ddot(3, diff, 1,
@@ -856,7 +827,7 @@ double complex compute_intersection(const struct half_infinite_ray *hr,
         }
 
         sgn = cblas_ddot(3, hr->unit_direction, 1, pr->unit_normal, 1);
-        return t + I * sgn; // if sgn positive then ray is blocked
+        return t + I * sgn;
 }
 
 bool process_vertical_chain_nomalloc(struct ribbon_node *rn,
@@ -1039,38 +1010,6 @@ void invert_spherical_angles(const double *unit_vector, double *phi,
                 *phi = 2 * PI - (*phi);
 }
 
-struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
-                                                 const struct
-                                                 perfect_reflector **ref_arr,
-                                                 int num_ref,
-                                                 const struct ray_ribbon *rb)
-{
-        double phi, theta;
-        invert_spherical_angles(rb->head->current->unit_direction,
-                                &phi, &theta);
-        struct ray_ribbon_array *rarr = init_ray_ribbon_array(4);
-
-        double complex *angles = custom_malloc(3 * sizeof(double complex));
-        *angles = (phi - 0.00001) + I * (theta + 0.00002);
-        *(angles + 1) = (phi + 0.000039) + I * (theta + 0.000029);
-        *(angles + 2) = (phi - 0.000041) + I * (theta - 0.00007);
-        /* double fact = (1e-3)/RAND_MAX; */
-        /* *angles = (phi - fact * rand()) + I * (theta + fact * rand()); */
-        /* *(angles + 1) = phi + fact * rand() + I * (theta + fact * rand()); */
-        /* *(angles + 2) = phi + fact * rand() + I * (theta + fact * rand()); */
-
-        populate_ray_ribbon_array_full_copy(tx, ref_arr, num_ref, 3, angles, rarr,
-                                       false);
-        custom_free(angles);
-        return rarr;
-        /* if (rarr->current_len > 2) return rarr; */
-        /* if (_RAYTRACING_DEBUG) { */
-        /*         fprintf(stderr, "Length is %d\n", rarr->current_len); */
-        /* } */
-        /* destroy_ray_ribbon_array(rarr); */
-        /* return generate_nearby_ribbons(tx, ref_arr, num_ref, rb); */
-}
-
 struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                            const struct ray_ribbon *rb,
                                            const struct receiver *rx,
@@ -1202,7 +1141,8 @@ struct ray_ribbon_array *throw_three_dim_ray_ribbon(struct transmitter *tn,
                                                     const double thet_end,
                                                     const double thet_incr)
 {
-        struct ray_ribbon_array *rarr = custom_malloc(sizeof(struct ray_ribbon_array));
+        struct ray_ribbon_array *rarr =
+                custom_malloc(sizeof(struct ray_ribbon_array));
         populate_ray_ribbon_array_long(tn, p, rarr,
                                        num_ref, phi_start, phi_end,
                                        phi_incr, thet_start, thet_end,
@@ -1224,9 +1164,9 @@ struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb)
 
 void populate_tx_paths(struct environment *env)
 {
-        int ctr = 0;
 	if (env->time_index % env->refresh_time == 0) {
-                fprintf(stderr, "Refreshing rays at time index: %d\n", env->time_index);
+                fprintf(stderr, "Refreshing rays at time index: %d\n",
+                        env->time_index);
                 env->tx_paths_updated = false;
         }
 
@@ -1237,9 +1177,10 @@ void populate_tx_paths(struct environment *env)
                 (const struct perfect_reflector **) env->prarray;
 
         // now populate individual paths
-        struct transmitter *tx = *(env->transmitters_array);
+
         struct ray_ribbon_array *rb_arr;
-        while (ctr < env->num_transmitters) {
+        for (int ctr = 0; ctr < env->num_transmitters; ++ctr) {
+                struct transmitter *tx = *(env->transmitters_array + ctr);
                 rb_arr = init_ray_ribbon_array(30);
                 //populate_ray_ribbon_array(tx, prconst, rb_arr, 600, 3, true);
 
@@ -1254,30 +1195,11 @@ void populate_tx_paths(struct environment *env)
                                     0.01,
                                     true);
                 *(env->tx_paths + ctr) = rb_arr;
-                ++ctr;
-                tx = *(env->transmitters_array + ctr);
         }
 
         destroy_last_reflector(env);
         env->tx_paths_updated = true;
         env->tx_paths_updated_rx_paths_updated = false;
-}
-
-
-void update_env_paths_delay_dopplers(struct environment *env) {
-        int ctr = 0;
-        struct ray_ribbon_array *rba = *(env->env_paths + ctr);
-        while (rba != 0) {
-                int ctr1 = 0;
-                struct ray_ribbon *rb = *(rba->ribbons + ctr1);
-                while (rb != NULL) {
-                        update_ribbon_delay_dopplers(rb, env);
-                        ctr1++;
-                        rb = *(rba->ribbons + ctr1);
-                }
-                ++ctr;
-                rba = *(env->env_paths + ctr);
-        }
 }
 
 void update_receiver_ribbon_delay_dopplers(struct receiver_ray_ribbon *rb,
@@ -1415,9 +1337,8 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
         }
 
         double complex signal;
-        int ctr = 0;
-        struct receiver *rx = (*(env->receivers_array + ctr));
-        while (rx != 0) {
+        for (int ctr = 0; ctr < env->num_receivers; ++ctr) {
+                struct receiver *rx = (*(env->receivers_array + ctr));
                 signal = 0;
                 int ctr1 = 0;
                 struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
@@ -1459,8 +1380,6 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                                 "\t%e\t%e\n",
                                 env->time, ctr, real_sig, imag_sig);
                 }
-                ++ctr;
-                rx = *(env->receivers_array + ctr);
         }
 }
 
@@ -1846,4 +1765,50 @@ void populate_env_paths(struct environment *env)
                 rx = *(env->receivers_array + ctr);
         }
         destroy_last_reflector(env);
+}
+
+// deprecated
+
+struct ray_ribbon_array *generate_nearby_ribbons(const struct transmitter *tx,
+                                                 const struct
+                                                 perfect_reflector **ref_arr,
+                                                 int num_ref,
+                                                 const struct ray_ribbon *rb)
+{
+        double phi, theta;
+        invert_spherical_angles(rb->head->current->unit_direction,
+                                &phi, &theta);
+        struct ray_ribbon_array *rarr = init_ray_ribbon_array(4);
+
+        double complex *angles = custom_malloc(3 * sizeof(double complex));
+        *angles = (phi - 0.00001) + I * (theta + 0.00002);
+        *(angles + 1) = (phi + 0.000039) + I * (theta + 0.000029);
+        *(angles + 2) = (phi - 0.000041) + I * (theta - 0.00007);
+        /* double fact = (1e-3)/RAND_MAX; */
+        /* *angles = (phi - fact * rand()) + I * (theta + fact * rand()); */
+        /* *(angles + 1) = phi + fact * rand() + I * (theta + fact * rand()); */
+        /* *(angles + 2) = phi + fact * rand() + I * (theta + fact * rand()); */
+
+        populate_ray_ribbon_array_full_copy(tx, ref_arr, num_ref, 3, angles, rarr,
+                                       false);
+        custom_free(angles);
+        return rarr;
+}
+
+// deprecated
+
+void update_env_paths_delay_dopplers(struct environment *env) {
+        int ctr = 0;
+        struct ray_ribbon_array *rba = *(env->env_paths + ctr);
+        while (rba != 0) {
+                int ctr1 = 0;
+                struct ray_ribbon *rb = *(rba->ribbons + ctr1);
+                while (rb != NULL) {
+                        update_ribbon_delay_dopplers(rb, env);
+                        ctr1++;
+                        rb = *(rba->ribbons + ctr1);
+                }
+                ++ctr;
+                rba = *(env->env_paths + ctr);
+        }
 }
