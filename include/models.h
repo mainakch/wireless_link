@@ -91,7 +91,9 @@ struct environment {
         double end_time;
         double max_limit;
         double min_limit;
-        double boundary_tolerance;
+	int refresh_time;
+	int awgn_supplied;
+        int time_index;
 
         int num_transmitters;
         int num_receivers;
@@ -104,9 +106,10 @@ struct environment {
 
         // flags
         bool read_in_nodes;
-        bool updated_tx_paths;
-        /* should be true by the time TX or RX is true */
+        /* should be true by the time TX or RX is read in */
         bool node_memory_allocated;
+        bool tx_paths_updated;
+        bool tx_paths_updated_rx_paths_updated;
 };
 
 struct file_reader {
@@ -168,8 +171,10 @@ void destroy_last_reflector(struct environment *env);
 double distance(const struct general_node *gn1,
                 const struct general_node *gn2);
 
-bool update_environment_from_file(struct environment *env,
-                                FILE *fp);
 bool update_environment_from_file_sim(struct simulation *sim);
 bool handle_request(struct environment *env, FILE *fp, const char *req_type);
 bool custom_fscanf(FILE *fp, const char *str, void *ptr);
+
+// Deprecated
+bool update_environment_from_file(struct environment *env,
+                                FILE *fp);

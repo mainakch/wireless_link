@@ -219,6 +219,11 @@ struct receiver_ray_ribbon *init_receiver_ray_ribbon(
                                                    rx,
                                                    prconst);
         rrbn_new->start_tx = ribbon->start_tx;
+
+        if (rrbn_new->ribbon == 0) {
+                destroy_receiver_ray_ribbon(rrbn_new);
+                return 0;
+        }
         return rrbn_new;
 }
 
@@ -230,18 +235,22 @@ bool populate_if_ray_ribbon_doesnt_exist
 
         while (rnll != 0) {
                 assert(rnll->rrbn != 0);
+                assert(rnll->rrbn->ribbon != 0);
                 if (check_same_type(rb1, rnll->rrbn->ribbon)) return false;
                 rnprev = rnll;
                 rnll = rnll->next;
         }
 
+        struct receiver_ray_ribbon *rrbn_new =
+                init_receiver_ray_ribbon(rx, rb1, env);
+        if (!rrbn_new) return false;
         // add rb1 to rx
         if (rnprev == 0) {
                 rx->rlln = init_receiver_ray_ribbon_ll_node();
-                rx->rlln->rrbn = init_receiver_ray_ribbon(rx, rb1, env);
+                rx->rlln->rrbn = rrbn_new;
         } else {
                 rnprev->next = init_receiver_ray_ribbon_ll_node();
-                rnprev->next->rrbn = init_receiver_ray_ribbon(rx, rb1, env);
+                rnprev->next->rrbn = rrbn_new;
         }
 
         return true;
@@ -249,10 +258,10 @@ bool populate_if_ray_ribbon_doesnt_exist
 
 void populate_receiver_ray_ribbons(struct environment *env)
 {
-        if (*(env->tx_paths) == 0 &&
-            env->tx_paths_updated_rx_paths_updated) {
+        if (env->tx_paths_updated_rx_paths_updated) {
                 return;
         }
+        fprintf(stderr, "Updating receiver ribbons\n");
 
         int ctrrx = 0;
         struct receiver *rx = *(env->receivers_array + ctrrx);
@@ -266,8 +275,9 @@ void populate_receiver_ray_ribbons(struct environment *env)
                         while (rbn != 0) {
                                 rbn->start_tx = *(env->transmitters_array
                                                   + ctrtx);
-                                populate_if_ray_ribbon_doesnt_exist(
+                                bool added = populate_if_ray_ribbon_doesnt_exist(
                                         rbn, rx, env);
+                                if (added) fprintf(stderr, "Added ribbon\n");
                                 ++ctrp;
                                 rbn = *(rbnarr->ribbons + ctrp);
                         }
@@ -306,12 +316,15 @@ bool update_receiver_ray_ribbons(struct receiver *rx,
         const struct perfect_reflector **prconst =
                 (const struct perfect_reflector **) env->prarray;
         while (rlln != 0) {
-                struct ray_ribbon *refined_ribbon = refine_ray_ribbon_image(
-                        rlln->rrbn->ribbon->start_tx,
-                        rlln->rrbn->ribbon,
-                        rx,
-                        prconst);
-                destroy_ray_ribbon(rlln->rrbn->ribbon);
+                struct ray_ribbon *refined_ribbon = 0;
+                if (rlln->rrbn->ribbon) {
+                        refined_ribbon = refine_ray_ribbon_image(
+                                rlln->rrbn->ribbon->start_tx,
+                                rlln->rrbn->ribbon,
+                                rx,
+                                prconst);
+                        destroy_ray_ribbon(rlln->rrbn->ribbon);
+                }
                 if (refined_ribbon != 0) {
                         refined_ribbon->start_tx = rlln->rrbn->ribbon->start_tx;
                         refined_ribbon->end_rx = rx;
@@ -319,7 +332,7 @@ bool update_receiver_ray_ribbons(struct receiver *rx,
                         update_receiver_ribbon_delay_dopplers(rlln->rrbn, env);
                 } else {
                         // tx path update is triggered whenever ray is lost
-                        env->tx_paths_updated = false;
+                        // env->tx_paths_updated = false;
                         rlln->rrbn->ribbon = 0;
                 }
 
@@ -336,48 +349,57 @@ void update_receiver_ray_ribbons_signal_buffer(struct receiver *rx,
 
         // code to update buffers
         struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
+        struct receiver_ray_ribbon_ll_node *rllnprev = 0;
         while (rlln != 0) {
-                // add current signal first
-                struct signal_buffer *signal = rlln->rrbn->signal;
-                if (signal == 0) {
-                        signal = init_signal_buffer();
-                        assert(rlln->rrbn->start_tx != 0);
-                        signal->signal = rlln->rrbn->start_tx->baseband_signal;
-                        signal->transmit_time = env->time;
-                        signal->delay = rlln->rrbn->delay;
-                        rlln->rrbn->signal = signal;
-                } else {
-                        while(signal->next != 0) {
-                                signal = signal->next;
+                /* if (rlln->rrbn->ribbon == 0 && rlln->rrbn->signal->next == 0 && */
+                /*     rlln->rrbn->signal->receiver_read && */
+                /*     rlln->rrbn->signal->transmit_time */
+                /*        + rlln->rrbn->signal->delay + */
+                /*     env->delta_time < env->time) { */
+                if (rlln->rrbn->ribbon == 0) {
+                        if (rllnprev != 0) {
+                                rllnprev->next = rlln->next;
+                                rlln->next = 0;
+                                destroy_receiver_ray_ribbon_ll_node(rlln);
+                                rlln = rllnprev->next;
+                        } else {
+                                rx->rlln = rlln->next;
+                                rlln->next = 0;
+                                destroy_receiver_ray_ribbon_ll_node(rlln);
+                                rlln = rx->rlln;
                         }
 
-                        if (rlln->rrbn->ribbon != 0) {
+                } else {
+                        // add current signal first
+                        struct signal_buffer *signal = rlln->rrbn->signal;
+                        if (signal == 0) {
+                                signal = init_signal_buffer();
+                                assert(rlln->rrbn->start_tx != 0);
+                                signal->signal = rlln->rrbn->start_tx->baseband_signal;
+                                signal->transmit_time = env->time;
+                                signal->delay = rlln->rrbn->delay;
+                                rlln->rrbn->signal = signal;
+                        } else {
+                                while(signal->next != 0) {
+                                        signal = signal->next;
+                                }
+
                                 signal->next = init_signal_buffer();
                                 signal->next->delay = rlln->rrbn->delay;
                                 signal->next->signal =
                                         rlln->rrbn->start_tx->baseband_signal;
                                 signal->next->transmit_time = env->time;
                         }
-                }
 
-                // remove signal if there are newer signals in the buffer
-                while (rlln->rrbn->signal != 0 && rlln->rrbn->signal->next != 0
-                       && rlln->rrbn->signal->next->transmit_time
-                       + rlln->rrbn->signal->next->delay < env->time) {
-                        rlln->rrbn->signal =
-                                destroy_signal_buffer_first(rlln->rrbn->signal);
-                }
+                        // remove signal if there are newer signals in the buffer
+                        while (rlln->rrbn->signal != 0 && rlln->rrbn->signal->next != 0
+                               && rlln->rrbn->signal->next->transmit_time
+                               + rlln->rrbn->signal->next->delay < env->time) {
+                                rlln->rrbn->signal =
+                                        destroy_signal_buffer_first(rlln->rrbn->signal);
+                        }
 
-                if (rlln->rrbn->ribbon == 0 && rlln->rrbn->signal->next == 0 &&
-                    rlln->rrbn->signal->receiver_read &&
-                    rlln->rrbn->signal->transmit_time
-                       + rlln->rrbn->signal->delay +
-                    env->delta_time < env->time) {
-                        struct receiver_ray_ribbon_ll_node *rllnp = rlln;
-                        rlln = rlln->next;
-                        destroy_receiver_ray_ribbon_ll_node(rllnp);
-
-                } else {
+                        rllnprev = rlln;
                         rlln = rlln->next;
                 }
         }
@@ -646,6 +668,7 @@ struct ray_ribbon *copy_ray_ribbon(const struct ray_ribbon *rb, bool till_dest)
 
 void destroy_ray_ribbon(struct ray_ribbon *rb)
 {
+        if (rb == 0) return;
         destroy_ray_ribbon_nodes(rb);
         custom_free(rb);
 }
@@ -1053,6 +1076,7 @@ struct ray_ribbon *refine_ray_ribbon_image(const struct transmitter *tx,
                                            const struct receiver *rx,
                                            const struct perfect_reflector **pr)
 {
+        if (rb == 0) return 0;
         // first count number of reflectors
         int cnt = count_ribbon_nodes(rb->head);
 
@@ -1200,8 +1224,13 @@ struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb)
 
 void populate_tx_paths(struct environment *env)
 {
-        if (env->tx_paths_updated) return;
         int ctr = 0;
+	if (env->time_index % env->refresh_time == 0) {
+                fprintf(stderr, "Refreshing rays at time index: %d\n", env->time_index);
+                env->tx_paths_updated = false;
+        }
+
+        if (env->tx_paths_updated) return;
         clear_tx_paths(env);
         add_receiver_patch(env, 10);
         const struct perfect_reflector **prconst =
@@ -1230,6 +1259,7 @@ void populate_tx_paths(struct environment *env)
         }
 
         destroy_last_reflector(env);
+        env->tx_paths_updated = true;
         env->tx_paths_updated_rx_paths_updated = false;
 }
 
@@ -1375,6 +1405,7 @@ void readout_all_signals(struct environment *env, FILE *fpout) {
 
 void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
         static bool first_call = true;
+        env->time_index++;
         if (first_call) {
                 first_call = false;
                 if (fpout != NULL) {
@@ -1397,11 +1428,14 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                                  rrbn->doppler * env->delta_time), 1);
 
                         double phase = 0;
+                        assert(rrbn->signal);
                         phase += rrbn->integrated_doppler_phase
                                 + rrbn->reflection_phase -
-                                (env->frequency + rrbn->doppler) *
-                                rrbn->signal->delay;
-                        if (rrbn->signal->delay + rrbn->signal->transmit_time
+                                (env->frequency + rrbn->doppler)
+                                * rrbn->signal->delay;
+
+                        if (rrbn->signal->delay +
+                            rrbn->signal->transmit_time
                             < env->time) {
                                 double txpower =
                                         rrbn->start_tx->gn->tm->power_in_dBm/10;
@@ -1411,6 +1445,7 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                                         * rrbn->signal->signal;
                                 rrbn->signal->receiver_read = true;
                         }
+
                         rlln = rlln->next;
                 }
 

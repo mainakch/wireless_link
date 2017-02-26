@@ -208,7 +208,6 @@ struct ray_ribbon_array *throw_three_dim_ray_ribbon(struct transmitter *tn,
                                                     const double thet_incr);
 struct ribbon_node *get_last_ribbon_node(const struct ray_ribbon *rb);
 void populate_tx_paths(struct environment *env);
-void populate_env_paths(struct environment *env);
 void update_env_paths_delay_dopplers(struct environment *env);
 void update_receiver_ribbon_delay_dopplers(struct receiver_ray_ribbon *rrb,
                                   const struct environment *env);
@@ -247,3 +246,4 @@ void compute_averaging_coefficients(const double *point,
 void remove_ribbon_node_duplicates(struct ribbon_node *rn);
 void update_ribbon_delay_dopplers(struct ray_ribbon *rb,
                                   const struct environment *env);
+void populate_env_paths(struct environment *env);

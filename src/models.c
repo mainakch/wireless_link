@@ -137,6 +137,7 @@ struct environment *init_environment()
 
         env->frequency = 900e6;
         env->delta_time = 0.001;
+	env->refresh_time = 3000000;
         env->sz_array_tx = MAX_TX + 1;
         env->sz_array_rx = MAX_RX + 1;
 
@@ -727,6 +728,10 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
                 }
                 tx = *(env->transmitters_array + id - env->num_receivers);
                 tx->baseband_signal = re + I * im;
+        } else if (!strcmp(req_type, "Refresh_time")) {
+                error |= custom_fscanf(fp, "%d", &(env->refresh_time));
+        } else if (!strcmp(req_type, "Awgn_supplied")) {
+                error |= custom_fscanf(fp, "%d", &(env->awgn_supplied));
         } else if (!strcmp(req_type, "Frequency")) {
                 error |= custom_fscanf(fp, "%lf", &env->frequency);
                 if (!error || env->frequency > 1e-5) {
