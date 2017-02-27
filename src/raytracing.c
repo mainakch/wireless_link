@@ -495,31 +495,42 @@ void populate_ray_ribbon_array_full_copy(const struct transmitter *tx,
                                          bool single_type)
 {
         int ctr = 0;
-        double phi, theta;
 
-        struct ribbon_node *rn = init_chain_of_ribbon_nodes(6);
-        struct ray_ribbon *rb = init_ray_ribbon(rn);
-        rb->start_tx = tx;
-
-        for (ctr = 0; ctr < num_points; ++ctr) {
-                phi = creal(*(angles + ctr));
-                theta = cimag(*(angles + ctr));
-                cblas_dcopy(3, tx->gn->smm->position, 1,
-                            rn->current->point, 1);
-                double direction[3] = {cos(phi),
-                                       sin(phi) * cos(theta),
-                                       sin(phi) * sin(theta)};
-                cblas_dcopy(3, direction, 1,
-                            rn->current->unit_direction, 1);
-
-                bool hit_des = process_vertical_chain_nomalloc(rn,
-                                                               ref_arr,
-                                                               num_ref);
-                if (hit_des) {
-                        add_ray_ribbon_copy(rarr, rb, single_type);
+        #pragma omp parallel shared(rarr, angles)
+        {
+                struct ribbon_node *rn = 0;
+                struct ray_ribbon *rb = 0;
+                #pragma omp critical
+                {
+                        rn = init_chain_of_ribbon_nodes(6);
+                        rb = init_ray_ribbon(rn);
+                        rb->start_tx = tx;
                 }
+
+                #pragma omp for private(ctr)
+                for (ctr = 0; ctr < num_points; ++ctr) {
+                        double phi, theta;
+                        phi = creal(*(angles + ctr));
+                        theta = cimag(*(angles + ctr));
+                        cblas_dcopy(3, tx->gn->smm->position, 1,
+                                    rn->current->point, 1);
+                        double direction[3] = {cos(phi),
+                                               sin(phi) * cos(theta),
+                                               sin(phi) * sin(theta)};
+                        cblas_dcopy(3, direction, 1,
+                                    rn->current->unit_direction, 1);
+
+                        bool hit_des = process_vertical_chain_nomalloc(rn,
+                                                                       ref_arr,
+                                                                       num_ref);
+                        if (hit_des) {
+                                #pragma omp critical
+                                add_ray_ribbon_copy(rarr, rb, single_type);
+                        }
+                }
+                #pragma omp critical
+                destroy_ray_ribbon(rb);
         }
-        destroy_ray_ribbon(rb);
 }
 
 struct ray_ribbon *init_ray_ribbon(struct ribbon_node *rn)
@@ -1339,6 +1350,7 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
         double complex signal;
         for (int ctr = 0; ctr < env->num_receivers; ++ctr) {
                 struct receiver *rx = (*(env->receivers_array + ctr));
+                rx->rx_signal = 0;
                 signal = 0;
                 int ctr1 = 0;
                 struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
@@ -1360,7 +1372,7 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                             < env->time) {
                                 double txpower =
                                         rrbn->start_tx->gn->tm->power_in_dBm/10;
-                                signal += rrbn->gain
+                                rx->rx_signal += rrbn->gain
                                         * cexp(2 * PI * phase * I)
                                         * pow(10, txpower)
                                         * rrbn->signal->signal;
@@ -1371,10 +1383,14 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                 }
 
                 double rx_noise_std = pow(rx->recv_noise_power, 0.5);
-                signal += rx_noise_std *
+                rx->rx_signal += rx_noise_std *
                         (*(env->unit_power_gaussian_noise + ctr));
-                double real_sig = creal(signal);
-                double imag_sig = cimag(signal);
+        }
+
+        for (int ctr = 0; ctr < env->num_receivers; ++ctr) {
+                struct receiver *rx = (*(env->receivers_array + ctr));
+                double real_sig = creal(rx->rx_signal);
+                double imag_sig = cimag(rx->rx_signal);
                 if (fpout != NULL) {
                         fprintf(fpout, "%lf\t%d"
                                 "\t%e\t%e\n",

@@ -8,6 +8,7 @@
 #include <gsl/gsl_matrix.h>
 #include <gsl/gsl_permutation.h>
 #include <math.h>
+#include <omp.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +64,7 @@ struct transmitter {
 struct receiver {
         struct general_node *gn;
         double recv_noise_power;
+        double complex rx_signal;
         struct receiver_ray_ribbon_ll_node *rlln;
 };
 
