@@ -1,8 +1,18 @@
 cmake_minimum_required(VERSION 3.7.2)
 project (wireless_link)
 
+
 set(PROJECT_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+
+find_package( OpenMP REQUIRED)
+if(OPENMP_FOUND)
+	message("OPENMP FOUND")
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -std=c99")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -std=c99")
 
 include_directories(include)
 file(GLOB SOURCES "src/*.c")
