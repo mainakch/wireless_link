@@ -47,6 +47,8 @@ struct receiver_ray_ribbon {
         double integrated_doppler_phase;
         double gain;
         double reflection_phase;
+        double theta;
+        double phi;
         const struct transmitter *start_tx;
 };
 
@@ -211,7 +213,9 @@ double length_ribbon_node(const struct ribbon_node *rn);
 void reflect(const double *pos1, const double *n1, double *vel, double *pos);
 void reflection_operation(const double *v1, const double *n1, double *vref);
 void readout_all_signals(struct environment *env, FILE *fpout);
-void readout_all_signals_buffer(struct environment *env, FILE *fpout);
+void readout_all_signals_buffer(struct environment *env);
+void printout_all_signals_buffer(const struct environment *env, FILE *fpout);
+void printout_path_nariman(const struct environment *env, FILE *fpout);
 void clear_tx_paths(struct environment *env);
 void clear_env_paths(struct environment *env);
 

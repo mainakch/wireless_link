@@ -95,11 +95,15 @@ void *get_or_free_memory(size_t size, void *ptr, int zero_for_get)
 {
         // negative zero_for_get to destroy all
         static struct memory_register *mem_reg = 0;
+        static omp_lock_t memorylock;
+
         void *ptr_n = 0;
 
         if (mem_reg == 0) {
                 mem_reg = init_memory_register();
+                omp_init_lock(&memorylock);
         }
+        omp_set_lock(&memorylock);
 
         // free allocated memory if zero_for_get is positive
         if (zero_for_get > 0) {
@@ -109,10 +113,12 @@ void *get_or_free_memory(size_t size, void *ptr, int zero_for_get)
         if (zero_for_get == 0) {
                 ptr_n = malloc_memory(size, mem_reg);
         }
+        omp_unset_lock(&memorylock);
 
         if (mem_reg != 0 && zero_for_get < 0) {
                 destroy_memory_register(mem_reg);
                 mem_reg = 0;
+                omp_destroy_lock(&memorylock);
         }
 
         return ptr_n;
@@ -263,6 +269,7 @@ void populate_receiver_ray_ribbons(struct environment *env)
         }
         fprintf(stderr, "Updating receiver ribbons\n");
 
+        #pragma omp parallel for shared(env)
         for (int ctrrx = 0; ctrrx < env->num_receivers; ++ctrrx) {
                 struct receiver *rx = *(env->receivers_array + ctrrx);
                 int ctrprx = 0;
@@ -290,6 +297,7 @@ void populate_receiver_ray_ribbons(struct environment *env)
 
 void update_all_receiver_ray_ribbons(struct environment *env)
 {
+        #pragma parallel for private(ctrrx) shared(env)
         for (int ctrrx = 0; ctrrx < env->num_receivers; ++ctrrx) {
                 struct receiver *rx = *(env->receivers_array + ctrrx);
                 update_receiver_ray_ribbons(rx, env);
@@ -500,7 +508,6 @@ void populate_ray_ribbon_array_full_copy(const struct transmitter *tx,
         {
                 struct ribbon_node *rn = 0;
                 struct ray_ribbon *rb = 0;
-                #pragma omp critical
                 {
                         rn = init_chain_of_ribbon_nodes(6);
                         rb = init_ray_ribbon(rn);
@@ -528,7 +535,6 @@ void populate_ray_ribbon_array_full_copy(const struct transmitter *tx,
                                 add_ray_ribbon_copy(rarr, rb, single_type);
                         }
                 }
-                #pragma omp critical
                 destroy_ray_ribbon(rb);
         }
 }
@@ -912,9 +918,6 @@ void print_ray_ribbon(const struct ray_ribbon *rb)
                 rn = rn->down;
                 ++ctr;
         }
-        fprintf(stderr, "Delay doppler for rayribbon are: %lf ns; %lf;\n",
-                (10e9) * rb->delay, rb->doppler);
-
 }
 
 void print_receiver_ray_ribbon(const struct receiver_ray_ribbon *rb)
@@ -1285,73 +1288,12 @@ void reflection_operation(const double *v1, const double *n1, double *vref) {
         cblas_daxpy(3, -2 * tmp, n1, 1, vref, 1);
 }
 
-void readout_all_signals(struct environment *env, FILE *fpout) {
-        static bool first_call = true;
-        if (first_call) {
-                first_call = false;
-                if (fpout != NULL) {
-                        fprintf(fpout, "time\treceiver\t"
-                                "real\timag\n");
-                }
-        }
-        double complex signal;
-        struct ray_ribbon_array *rba;
-        int ctr = 0;
-        rba = *(env->env_paths + ctr);
-        struct receiver *rx = (*(env->receivers_array + ctr));
-        while (rba != 0) {
-                signal = 0;
-                int ctr1 = 0;
-                struct ray_ribbon *rb = *(rba->ribbons + ctr1);
-                while (rb != 0) {
-
-                        rb->integrated_doppler_phase = fmod(
-                                (rb->integrated_doppler_phase +
-                                 rb->doppler * env->delta_time), 1);
-
-                        double phase = 0;
-                        phase += rb->integrated_doppler_phase
-                                + rb->reflection_phase -
-                                (env->frequency + rb->doppler) * rb->delay;
-                        signal += rb->gain * cexp(2 * PI * phase * I)
-                                * pow(10, rb->start_tx->gn->tm->power_in_dBm/10)
-                                * rb->start_tx->baseband_signal;
-                        ctr1++;
-                        rb = *(rba->ribbons + ctr1);
-                }
-
-                double rx_noise_std = pow(rx->recv_noise_power, 0.5);
-                signal += rx_noise_std *
-                        (*(env->unit_power_gaussian_noise + ctr));
-                double real_sig = creal(signal);
-                double imag_sig = cimag(signal);
-                if (fpout != NULL) {
-                        fprintf(fpout, "%lf\t%d\t"
-                                "%e\t%e\n",
-                                env->time, ctr, real_sig, imag_sig);
-                }
-                ++ctr;
-                rba = *(env->env_paths + ctr);
-                rx = (*(env->receivers_array + ctr));
-        }
-}
-
-void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
-        static bool first_call = true;
+void readout_all_signals_buffer(struct environment *env) {
+        #pragma parallel for private(ctr) shared(env)
         env->time_index++;
-        if (first_call) {
-                first_call = false;
-                if (fpout != NULL) {
-                        fprintf(fpout, "time\treceiver\t"
-                                "real\timag\n");
-                }
-        }
-
-        double complex signal;
         for (int ctr = 0; ctr < env->num_receivers; ++ctr) {
                 struct receiver *rx = (*(env->receivers_array + ctr));
                 rx->rx_signal = 0;
-                signal = 0;
                 int ctr1 = 0;
                 struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
                 while (rlln != 0) {
@@ -1379,6 +1321,14 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                                 rrbn->signal->receiver_read = true;
                         }
 
+                        // calculate the direction of last ray
+                        struct ribbon_node *rn = rrbn->ribbon->head;
+                        while (!rn->hit_destination_patch) {
+                                rn = rn->down;
+                        }
+                        invert_spherical_angles(rn->current->unit_direction,
+                                                &(rrbn->phi), &(rrbn->theta));
+
                         rlln = rlln->next;
                 }
 
@@ -1386,16 +1336,60 @@ void readout_all_signals_buffer(struct environment *env, FILE *fpout) {
                 rx->rx_signal += rx_noise_std *
                         (*(env->unit_power_gaussian_noise + ctr));
         }
+}
+
+void printout_all_signals_buffer(const struct environment *env, FILE *fpout) {
+        static bool first_call = true;
+        if (first_call) {
+                first_call = false;
+                if (fpout != NULL) {
+                        fprintf(fpout, "time\treceiver\t"
+                                "real\timag\n");
+                }
+        }
 
         for (int ctr = 0; ctr < env->num_receivers; ++ctr) {
                 struct receiver *rx = (*(env->receivers_array + ctr));
                 double real_sig = creal(rx->rx_signal);
                 double imag_sig = cimag(rx->rx_signal);
                 if (fpout != NULL) {
-                        fprintf(fpout, "%lf\t%d"
-                                "\t%e\t%e\n",
+                        fprintf(fpout, "%10.7g\t%10d"
+                                "\t%10.7g\t%10.7g\n",
                                 env->time, ctr, real_sig, imag_sig);
                 }
+        }
+}
+
+void printout_path_nariman(const struct environment *env, FILE *fpout) {
+        static bool first_call = true;
+        if (first_call) {
+                first_call = false;
+                fprintf(fpout, "env: rx <nodeid> <num_paths N> <delay1>"
+                        " <doppler1> <phi1> <theta1> <gain1> ... <"
+                        "delayN> <dopplerN> <phiN> <thetaN> <gainN>\n");
+        }
+
+        for (int ctr = 0; ctr < env->num_receivers; ++ctr) {
+                struct receiver *rx = (*(env->receivers_array + ctr));
+                struct receiver_ray_ribbon_ll_node *rlln = rx->rlln;
+                struct receiver_ray_ribbon_ll_node *rllntmp = rx->rlln;
+                int num_rays = 0;
+                while (rllntmp != 0) {
+                        ++num_rays;
+                        rllntmp = rllntmp->next;
+                }
+
+                fprintf(fpout, "env: rx %10d %10d ", ctr, num_rays);
+
+                while (rlln != 0) {
+                        struct receiver_ray_ribbon *rrbn = rlln->rrbn;
+                        fprintf(fpout, "%10.7g %10.7g %10.7g "
+                                "%10.7g %10.7g ", rrbn->delay,
+                                rrbn->doppler, rrbn->phi, rrbn->theta,
+                                rrbn->gain);
+                        rlln = rlln->next;
+                }
+                fprintf(fpout, "\n");
         }
 }
 
@@ -1405,16 +1399,6 @@ void clear_tx_paths(struct environment *env) {
         while (*(env->tx_paths + ctr) != 0) {
                 destroy_ray_ribbon_array(*(env->tx_paths + ctr));
                 *(env->tx_paths + ctr) = 0;
-                ++ctr;
-        }
-}
-
-void clear_env_paths(struct environment *env) {
-        // clear existing paths
-        int ctr = 0;
-        while (*(env->env_paths + ctr) != 0) {
-                destroy_ray_ribbon_array(*(env->env_paths + ctr));
-                *(env->env_paths + ctr) = 0;
                 ++ctr;
         }
 }
@@ -1826,5 +1810,70 @@ void update_env_paths_delay_dopplers(struct environment *env) {
                 }
                 ++ctr;
                 rba = *(env->env_paths + ctr);
+        }
+}
+
+// deprecated
+
+void clear_env_paths(struct environment *env) {
+        // clear existing paths
+        int ctr = 0;
+        while (*(env->env_paths + ctr) != 0) {
+                destroy_ray_ribbon_array(*(env->env_paths + ctr));
+                *(env->env_paths + ctr) = 0;
+                ++ctr;
+        }
+}
+
+// deprecated
+
+void readout_all_signals(struct environment *env, FILE *fpout) {
+        static bool first_call = true;
+        if (first_call) {
+                first_call = false;
+                if (fpout != NULL) {
+                        fprintf(fpout, "time\treceiver\t"
+                                "real\timag\n");
+                }
+        }
+        double complex signal;
+        struct ray_ribbon_array *rba;
+        int ctr = 0;
+        rba = *(env->env_paths + ctr);
+        struct receiver *rx = (*(env->receivers_array + ctr));
+        while (rba != 0) {
+                signal = 0;
+                int ctr1 = 0;
+                struct ray_ribbon *rb = *(rba->ribbons + ctr1);
+                while (rb != 0) {
+
+                        rb->integrated_doppler_phase = fmod(
+                                (rb->integrated_doppler_phase +
+                                 rb->doppler * env->delta_time), 1);
+
+                        double phase = 0;
+                        phase += rb->integrated_doppler_phase
+                                + rb->reflection_phase -
+                                (env->frequency + rb->doppler) * rb->delay;
+                        signal += rb->gain * cexp(2 * PI * phase * I)
+                                * pow(10, rb->start_tx->gn->tm->power_in_dBm/10)
+                                * rb->start_tx->baseband_signal;
+                        ctr1++;
+                        rb = *(rba->ribbons + ctr1);
+                }
+
+                double rx_noise_std = pow(rx->recv_noise_power, 0.5);
+                signal += rx_noise_std *
+                        (*(env->unit_power_gaussian_noise + ctr));
+                double real_sig = creal(signal);
+                double imag_sig = cimag(signal);
+                if (fpout != NULL) {
+                        fprintf(fpout, "%lf\t%d\t"
+                                "%e\t%e\n",
+                                env->time, ctr, real_sig, imag_sig);
+                }
+                ++ctr;
+                rba = *(env->env_paths + ctr);
+                rx = (*(env->receivers_array + ctr));
         }
 }

@@ -16,7 +16,9 @@ int main(int argc, char *argv[])
 		populate_tx_paths(sim->env);
 		populate_receiver_ray_ribbons(sim->env);
 		update_all_receiver_ray_ribbons(sim->env);
-	        readout_all_signals_buffer(sim->env, sim->fr->outfile);
-		ctr++;
+	        readout_all_signals_buffer(sim->env);
+	        printout_all_signals_buffer(sim->env, sim->fr->outfile);
+		printout_path_nariman(sim->env, sim->fr->outfile);
+		++ctr;
 	}
 }
