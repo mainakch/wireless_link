@@ -9,9 +9,8 @@ int main(int argc, char *argv[])
 	}
 
         update_environment_from_file_sim(sim);
-	bool eofflag;
 	int ctr = 0;
-	while (!(eofflag = update_environment_from_file_sim(sim))) {
+	while (!(update_environment_from_file_sim(sim))) {
 	        fprintf(stderr, "%d\n", ctr);
 		populate_tx_paths(sim->env);
 		populate_receiver_ray_ribbons(sim->env);
@@ -21,4 +20,5 @@ int main(int argc, char *argv[])
 		printout_path_nariman(sim->env, sim->fr->outfile);
 		++ctr;
 	}
+        destroy_simulation(sim);
 }

@@ -94,7 +94,8 @@ struct perfect_reflector *init_perfect_reflector(const double *normal,
 
 struct perfect_reflector *init_perfect_reflector_nine_pts_direction(
         const double *pt1, const double *pt2,
-        const double *pt3, bool direction) {
+        const double *pt3, bool direction)
+{
         // find out normal
         double v1[3];
         double v2[3];
@@ -627,7 +628,6 @@ static void add_general_node(struct environment *env, struct general_node *gn)
         *(env->node_array + length) = 0;
 }
 
-
 double distance(const struct general_node *gn1, const struct general_node *gn2)
 {
         double *pos1 = gn1->smm->position;
@@ -642,7 +642,6 @@ double distance(const struct general_node *gn1, const struct general_node *gn2)
 
 bool update_environment_from_file_sim(struct simulation *sim)
 {
-
         struct environment *env = sim->env;
         FILE *fp = sim->fr->infile;
 
@@ -659,12 +658,9 @@ bool update_environment_from_file_sim(struct simulation *sim)
         if (error_flag) {
                 fprintf(stderr, "Error in file syntax while reading token "
                         "%s.  Exiting.\n", buff);
-                destroy_simulation(sim);
-                exit(1);
         }
 
-        if (eofflag) destroy_simulation(sim);
-        return eofflag;
+        return error_flag || eofflag;
 }
 
 bool handle_request(struct environment *env, FILE *fp, const char *req_type)
@@ -852,7 +848,3 @@ bool custom_fscanf(FILE *fp, const char *str, void *ptr)
 {
         return fscanf(fp, str, ptr) == 0;
 }
-
-// Deprecated
-
-// deprecated
