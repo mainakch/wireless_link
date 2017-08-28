@@ -1,8 +1,8 @@
 #!/bin/bash
 
-INSTALL_DIR=/usr/bin
+INSTALL_DIR=./
 
-cmake -H. -Bbuild 
+cmake -H. -DCMAKE_BUILD_TYPE=Release -Bbuild 
 cmake --build build 
 
-sudo cp build/wireless_link $INSTALL_DIR
+cp build/wireless_link $INSTALL_DIR

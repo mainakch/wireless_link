@@ -3,6 +3,7 @@ project (wireless_link)
 
 
 set(PROJECT_SOURCE_DIR ${CMAKE_SOURCE_DIR}/src)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS} -std=c11")
 
 find_package( OpenMP REQUIRED)
 if(OPENMP_FOUND)
@@ -11,8 +12,8 @@ if(OPENMP_FOUND)
 	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 endif()
 
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -std=c99")
-set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -std=c99")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Og")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O2")
 
 include_directories(include)
 file(GLOB SOURCES "src/*.c")

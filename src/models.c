@@ -838,7 +838,8 @@ bool handle_request(struct environment *env, FILE *fp, const char *req_type)
                 int ctr = 0;
                 char buff[4096];
                 char ch = '1';
-                fgets(buff, 4095, fp);
+                char *str = fgets(buff, 4095, fp);
+                error |= (str == 0);
                 if (error) return error;
         } else {
                 // keyword not found
