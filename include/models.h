@@ -161,7 +161,6 @@ void destroy_environment(struct environment *env);
 void destroy_file_reader(struct file_reader *fr);
 void destroy_perfect_reflector(struct perfect_reflector *pr);
 void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin);
-double _gaussrand(); // http://c-faq.com/lib/gaussian.html
 struct file_reader *init_file_reader(int argc, char *argv[]);
 void cross_product(const double *v1, const double *v2, double *v3);
 double normalize_unit_vector(double *v1);

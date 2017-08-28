@@ -434,24 +434,6 @@ void destroy_perfect_reflectorarray(struct perfect_reflector **pr_begin)
         custom_free(pr_begin);
 }
 
-double _gaussrand() // http://c-faq.com/lib/gaussian.html
-{
-        static double U, V;
-        static int phase = 0;
-        double Z;
-
-        if(phase == 0) {
-                U = (rand() + 1.) / (RAND_MAX + 2.);
-                V = rand() / (RAND_MAX + 1.);
-                Z = sqrt(-2 * log(U)) * sin(2 * PI * V);
-        } else {
-                Z = sqrt(-2 * log(U)) * cos(2 * PI * V);
-        }
-
-        phase = 1 - phase;
-        return Z;
-}
-
 struct file_reader *init_file_reader(int argc, char *argv[])
 {
         struct file_reader *fr = 0;
